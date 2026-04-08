@@ -8,7 +8,6 @@
 
 const API_URL = 'http://127.0.0.1:4819';
 const MAX_TOKENS = 10000;
-const MAX_LOOPS = 50;
 const FAST_MODEL = 'claude-haiku-4-5-20251001';
 const THINKING_BUDGET = 10000;
 
@@ -153,16 +152,22 @@ const attachmentsEl = document.getElementById('attachments');
 const thinkingToggle = document.getElementById('thinking-toggle');
 const fastToggle = document.getElementById('fast-toggle');
 const sidebar = document.getElementById('sidebar');
+const stepsSelect = document.getElementById('steps-select');
 
 // Restore settings
 const savedModel = localStorage.getItem('clawline-model');
 if (savedModel) modelSelect.value = savedModel;
+const savedSteps = localStorage.getItem('clawline-steps');
+if (savedSteps) stepsSelect.value = savedSteps;
 thinkingEnabled = localStorage.getItem('clawline-thinking') === 'true';
 fastMode = localStorage.getItem('clawline-fast') === 'true';
 if (thinkingEnabled) thinkingToggle.classList.add('active');
 if (fastMode) fastToggle.classList.add('active');
 
 modelSelect.addEventListener('change', () => localStorage.setItem('clawline-model', modelSelect.value));
+stepsSelect.addEventListener('change', () => localStorage.setItem('clawline-steps', stepsSelect.value));
+
+function getMaxLoops() { return parseInt(stepsSelect.value) || 50; }
 thinkingToggle.addEventListener('click', () => {
   thinkingEnabled = !thinkingEnabled;
   thinkingToggle.classList.toggle('active', thinkingEnabled);
@@ -308,18 +313,56 @@ function stopAgent() { abortController?.abort(); abortController = null; setRunn
 // ── Markdown Renderer ──
 
 function renderMarkdown(text) {
-  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+  // Extract code blocks first to protect them
+  const codeBlocks = [];
+  let processed = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    codeBlocks.push(`<pre><code>${code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`);
+    return `%%CODE_BLOCK_${codeBlocks.length - 1}%%`;
+  });
+
+  // Escape HTML in remaining text
+  processed = processed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Tables: detect | col | col | patterns
+  processed = processed.replace(/((?:^\|.+\|$\n?)+)/gm, (tableBlock) => {
+    const rows = tableBlock.trim().split('\n').filter(r => r.trim());
+    if (rows.length < 2) return tableBlock;
+    const parseRow = r => r.split('|').slice(1, -1).map(c => c.trim());
+    const headerCells = parseRow(rows[0]);
+    // Check if row 2 is separator (---|---)
+    const isSep = rows[1] && /^\|[\s\-:|]+\|$/.test(rows[1].trim());
+    const dataStart = isSep ? 2 : 1;
+    let html = '<table><thead><tr>' + headerCells.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+    for (let i = dataStart; i < rows.length; i++) {
+      const cells = parseRow(rows[i]);
+      html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+    }
+    return html + '</tbody></table>';
+  });
+
+  // Inline formatting
+  processed = processed
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>').replace(/^---$/gm, '<hr>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/^---$/gm, '<hr>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-    .replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
-  html = html.replace(/((?:<li>.*?<\/li>\s*)+)/g, '<ul>$1</ul>');
-  return '<p>' + html + '</p>';
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+
+  // Wrap lists
+  processed = processed.replace(/((?:<li>.*?<\/li>(?:<br>)?)+)/g, '<ul>$1</ul>');
+
+  // Restore code blocks
+  codeBlocks.forEach((block, i) => { processed = processed.replace(`%%CODE_BLOCK_${i}%%`, block); });
+
+  return '<p>' + processed + '</p>';
 }
 
 // ── Message Display ──
@@ -388,9 +431,7 @@ function addToolCall(name, args) {
   const body = group.querySelector('.tool-group-body');
   stepCount++;
   const row = document.createElement('div'); row.className = 'tool-step';
-  const icons = { screenshot: '📷', left_click: '👆', right_click: '👆', double_click: '👆', triple_click: '👆', type: '⌨️', key: '⌨️', scroll: '📜', hover: '🖱️', wait: '⏱️', left_click_drag: '✋', navigate: '🧭', read_page: '📖', find: '🔍', form_input: '📝', get_page_text: '📄', javascript_tool: '💻', tabs_create: '➕', tabs_context: '📑', read_console_messages: '🖥️', read_network_requests: '🌐', resize_window: '📐', file_upload: '📎', update_plan: '📋', computer: '🖥️' };
   const action = args?.action;
-  const icon = icons[action] || icons[name] || '🔧';
   let label;
   if (name === 'computer') {
     const labels = { screenshot: 'Take screenshot', left_click: 'Click', right_click: 'Right click', double_click: 'Double click', triple_click: 'Triple click', type: 'Type', key: 'Key press', scroll: 'Scroll', hover: 'Hover', wait: `Wait ${args?.duration || 2}s`, left_click_drag: 'Drag' };
@@ -399,7 +440,7 @@ function addToolCall(name, args) {
     const labels = { read_page: `Read page${args?.filter === 'interactive' ? ' (interactive)' : ''}`, find: `Find "${(args?.query || '').slice(0, 25)}"`, form_input: `Set ${args?.ref}`, navigate: 'Navigate', get_page_text: 'Get page text', javascript_tool: 'JavaScript', tabs_create: 'Create tab', tabs_context: 'Tab context', read_console_messages: 'Console', read_network_requests: 'Network', resize_window: 'Resize', file_upload: 'Upload file', update_plan: 'Update plan' };
     label = labels[name] || name.replace(/_/g, ' ');
   }
-  row.innerHTML = `<span class="tool-step-icon">${icon}</span><span class="tool-step-label">${escapeHtml(label)}</span>`;
+  row.innerHTML = `<span class="tool-step-label">${escapeHtml(label)}</span>`;
   body.appendChild(row);
   group.querySelector('.tool-group-count').textContent = `${stepCount} steps`;
   scrollBottom();
@@ -418,7 +459,15 @@ function addToolResult(text) {
   // Long results are silently consumed (Claude already has them via tool_result)
 }
 
-function endToolGroup() { activeToolGroup = null; stepCount = 0; }
+function endToolGroup() {
+  // Auto-collapse when tool group is done
+  if (activeToolGroup) {
+    activeToolGroup.classList.add('collapsed');
+    const arrow = activeToolGroup.querySelector('.tool-group-arrow');
+    if (arrow) arrow.textContent = '›';
+  }
+  activeToolGroup = null; stepCount = 0;
+}
 
 // ── Screenshot Optimization ──
 
@@ -955,7 +1004,7 @@ async function runAgentLoop() {
   abortController = new AbortController();
 
   try {
-    for (let step = 1; step <= MAX_LOOPS; step++) {
+    for (let step = 1; step <= getMaxLoops(); step++) {
       setStatus(`Step ${step}...`);
 
       const body = {
