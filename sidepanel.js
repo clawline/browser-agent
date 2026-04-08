@@ -862,17 +862,62 @@ async function* parseSSE(response) {
 }
 
 // ── Conversation Pruning ──
+// Must preserve tool_use → tool_result pairs (API requires them adjacent)
 
 const MAX_CONTEXT_PAIRS = 8, MAX_TOOL_TEXT = 200, RECENT_KEEP = 6;
 
+function hasToolUse(msg) {
+  return Array.isArray(msg.content) && msg.content.some(b => b.type === 'tool_use');
+}
+
+function hasToolResult(msg) {
+  return Array.isArray(msg.content) && msg.content.some(b => b.type === 'tool_result');
+}
+
 function pruneConversation(messages) {
   if (messages.length <= RECENT_KEEP) return messages;
+
   let pruned = messages;
   const maxMsgs = MAX_CONTEXT_PAIRS * 2 + 2;
+
   if (pruned.length > maxMsgs) {
+    // Find safe cut point: never split between tool_use and tool_result
     const keep = MAX_CONTEXT_PAIRS * 2;
-    pruned = [pruned[0], pruned[1], { role: 'user', content: `[${pruned.length - 2 - keep} earlier messages trimmed]` }, ...pruned.slice(-keep)];
+    let cutEnd = pruned.length - keep;
+
+    // Ensure cut doesn't land between tool_use (assistant) and tool_result (user)
+    // Walk forward from cutEnd to find a safe boundary
+    while (cutEnd < pruned.length - 2) {
+      const prev = pruned[cutEnd - 1];
+      // If the message just before the cut has tool_use, we'd orphan it — include it
+      if (prev && prev.role === 'assistant' && hasToolUse(prev)) {
+        cutEnd++;
+        // Also include the matching tool_result
+        if (cutEnd < pruned.length && pruned[cutEnd]?.role === 'user' && hasToolResult(pruned[cutEnd])) {
+          cutEnd++;
+        }
+      } else {
+        break;
+      }
+    }
+
+    // Also check: does the first kept message start with tool_result? If so, include the tool_use before it
+    const keptStart = cutEnd;
+    if (keptStart < pruned.length && pruned[keptStart]?.role === 'user' && hasToolResult(pruned[keptStart])) {
+      cutEnd = Math.max(0, keptStart - 1); // include the assistant tool_use before it
+    }
+
+    if (cutEnd > 2) {
+      pruned = [
+        pruned[0],
+        pruned[1],
+        { role: 'user', content: `[${cutEnd - 2} earlier messages trimmed]` },
+        ...pruned.slice(cutEnd),
+      ];
+    }
   }
+
+  // Strip images and truncate text in older messages (but preserve tool_use/tool_result structure)
   return pruned.map((msg, i) => {
     if (i >= pruned.length - RECENT_KEEP) return msg;
     if (typeof msg.content === 'string') return msg;
@@ -880,6 +925,9 @@ function pruneConversation(messages) {
     return { ...msg, content: msg.content.map(block => {
       if (block.type === 'image') return { type: 'text', text: '[screenshot]' };
       if (block.type === 'text' && block.text?.length > MAX_TOOL_TEXT) return { type: 'text', text: block.text.slice(0, MAX_TOOL_TEXT) + '...[trimmed]' };
+      // Keep tool_use blocks intact (id, name, input are required by API)
+      if (block.type === 'tool_use') return block;
+      // Strip images inside tool_result but keep the structure
       if (block.type === 'tool_result' && Array.isArray(block.content)) {
         return { ...block, content: block.content.map(b => {
           if (b.type === 'image') return { type: 'text', text: '[screenshot]' };
