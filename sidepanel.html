@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clawline Agent</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <span>History</span>
+      <button id="sidebar-close" title="Close">&times;</button>
+    </div>
+    <div id="conversation-list"></div>
+  </div>
+  <div id="main">
+    <div id="header">
+      <button id="history-btn" title="History">☰</button>
+      <h1>Clawline</h1>
+      <select id="model-select">
+        <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+        <option value="claude-opus-4-6">Opus 4.6</option>
+        <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+      </select>
+      <div id="toggles">
+        <button id="thinking-toggle" class="toggle-btn" title="Extended Thinking">🧠</button>
+        <button id="fast-toggle" class="toggle-btn" title="Fast Mode (Haiku)">⚡</button>
+      </div>
+      <button id="new-chat" title="New conversation">+</button>
+    </div>
+    <div id="messages"></div>
+    <div id="input-area">
+      <div id="status"></div>
+      <div id="input-row">
+        <label id="upload-btn" title="Attach image">
+          <input type="file" id="file-input" accept="image/*" hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </label>
+        <textarea id="input" rows="1" placeholder="Message Claude..." autofocus></textarea>
+        <button id="stop" style="display:none" title="Stop">&#x25A0;</button>
+        <button id="send" title="Send">&#x2191;</button>
+      </div>
+      <div id="attachments"></div>
+    </div>
+  </div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

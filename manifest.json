@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Clawline Browser Agent",
+  "version": "0.1.0",
+  "description": "AI browser agent powered by local Claude API",
+  "action": {
+    "default_title": "Open Clawline Agent"
+  },
+  "commands": {
+    "toggle-side-panel": {
+      "description": "Toggle agent side panel",
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      }
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [{
+    "js": ["content-script.js"],
+    "matches": ["<all_urls>"],
+    "all_frames": true,
+    "run_at": "document_start"
+  }],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "activeTab",
+    "scripting",
+    "debugger",
+    "tabs"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "icons": {
+    "128": "icon-128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+  }
+}
