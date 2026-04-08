@@ -1,14 +1,20 @@
-/* Claude (Dev Local) — Full browser agent sidepanel */
+/* Clawline Browser Agent — Full browser automation sidepanel
+ * Replicates the Claude Chrome extension's tool system and agent loop.
+ * Tools: read_page, find, form_input, computer, navigate, get_page_text,
+ *        tabs_create, tabs_context, read_console_messages, read_network_requests,
+ *        resize_window, javascript_tool
+ * API: Local proxy at 127.0.0.1:4819 → Anthropic Messages API
+ */
 
 const API_URL = 'http://127.0.0.1:4819';
-const MAX_TOKENS = 16384;
+const MAX_TOKENS = 10000;
 const MAX_LOOPS = 50;
 const FAST_MODEL = 'claude-haiku-4-5-20251001';
 const THINKING_BUDGET = 10000;
 
 // ── Conversation Storage ──
 
-let allConversations = {}; // { id: { id, title, messages, updatedAt, displayMessages } }
+let allConversations = {};
 let activeConvId = null;
 
 async function loadConversations() {
@@ -22,7 +28,6 @@ async function loadConversations() {
 }
 
 function saveConversations() {
-  // Strip base64 images from messages before saving to stay under storage limits
   const stripped = {};
   for (const [id, conv] of Object.entries(allConversations)) {
     stripped[id] = {
@@ -51,14 +56,11 @@ function createConversation() {
 }
 
 function getActiveConv() {
-  if (!activeConvId || !allConversations[activeConvId]) {
-    createConversation();
-  }
+  if (!activeConvId || !allConversations[activeConvId]) createConversation();
   return allConversations[activeConvId];
 }
 
 function updateConvTitle(conv) {
-  // Use first user message as title
   const firstUser = conv.messages.find(m => m.role === 'user');
   if (firstUser) {
     const text = typeof firstUser.content === 'string' ? firstUser.content : firstUser.content?.find(b => b.type === 'text')?.text || '';
@@ -69,7 +71,6 @@ function updateConvTitle(conv) {
 function saveCurrentState() {
   const conv = getActiveConv();
   conv.messages = conversation;
-  // Strip base64 images from display HTML to fit in storage
   conv.displayMessages = messagesEl.innerHTML.replace(/src="data:image\/[^"]+"/g, 'src=""');
   conv.updatedAt = Date.now();
   updateConvTitle(conv);
@@ -78,7 +79,6 @@ function saveCurrentState() {
 }
 
 function switchConversation(id) {
-  // Save current first
   if (activeConvId && allConversations[activeConvId]) {
     allConversations[activeConvId].messages = conversation;
     allConversations[activeConvId].displayMessages = messagesEl.innerHTML.replace(/src="data:image\/[^"]+"/g, 'src=""');
@@ -97,13 +97,7 @@ function deleteConversation(id) {
   delete allConversations[id];
   if (activeConvId === id) {
     const ids = Object.keys(allConversations).sort((a, b) => (allConversations[b].updatedAt || 0) - (allConversations[a].updatedAt || 0));
-    if (ids.length > 0) {
-      switchConversation(ids[0]);
-    } else {
-      createConversation();
-      conversation = [];
-      messagesEl.innerHTML = '';
-    }
+    ids.length > 0 ? switchConversation(ids[0]) : (createConversation(), conversation = [], messagesEl.innerHTML = '');
   }
   saveConversations();
   renderConversationList();
@@ -119,11 +113,7 @@ function renderConversationList() {
     const ago = formatTimeAgo(conv.updatedAt);
     div.innerHTML = `<span class="conv-title">${escapeHtml(conv.title)}</span><span class="conv-time">${ago}</span><button class="conv-delete" data-id="${conv.id}" title="Delete">&times;</button>`;
     div.addEventListener('click', (e) => {
-      if (e.target.classList.contains('conv-delete')) {
-        e.stopPropagation();
-        deleteConversation(e.target.dataset.id);
-        return;
-      }
+      if (e.target.classList.contains('conv-delete')) { e.stopPropagation(); deleteConversation(e.target.dataset.id); return; }
       switchConversation(conv.id);
     });
     listEl.appendChild(div);
@@ -139,9 +129,7 @@ function formatTimeAgo(ts) {
   return Math.floor(diff / 86400000) + 'd';
 }
 
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
 // ── State ──
 
@@ -167,100 +155,91 @@ const fastToggle = document.getElementById('fast-toggle');
 const sidebar = document.getElementById('sidebar');
 
 // Restore settings
-const savedModel = localStorage.getItem('claude-dev-model');
+const savedModel = localStorage.getItem('clawline-model');
 if (savedModel) modelSelect.value = savedModel;
-thinkingEnabled = localStorage.getItem('claude-dev-thinking') === 'true';
-fastMode = localStorage.getItem('claude-dev-fast') === 'true';
+thinkingEnabled = localStorage.getItem('clawline-thinking') === 'true';
+fastMode = localStorage.getItem('clawline-fast') === 'true';
 if (thinkingEnabled) thinkingToggle.classList.add('active');
 if (fastMode) fastToggle.classList.add('active');
 
-modelSelect.addEventListener('change', () => localStorage.setItem('claude-dev-model', modelSelect.value));
-
+modelSelect.addEventListener('change', () => localStorage.setItem('clawline-model', modelSelect.value));
 thinkingToggle.addEventListener('click', () => {
   thinkingEnabled = !thinkingEnabled;
   thinkingToggle.classList.toggle('active', thinkingEnabled);
-  localStorage.setItem('claude-dev-thinking', thinkingEnabled);
-  if (thinkingEnabled && fastMode) { fastMode = false; fastToggle.classList.remove('active'); localStorage.setItem('claude-dev-fast', false); }
+  localStorage.setItem('clawline-thinking', thinkingEnabled);
+  if (thinkingEnabled && fastMode) { fastMode = false; fastToggle.classList.remove('active'); localStorage.setItem('clawline-fast', false); }
   setStatus(thinkingEnabled ? 'Extended thinking ON' : 'Extended thinking OFF');
   setTimeout(() => setStatus(''), 1500);
 });
-
 fastToggle.addEventListener('click', () => {
   fastMode = !fastMode;
   fastToggle.classList.toggle('active', fastMode);
-  localStorage.setItem('claude-dev-fast', fastMode);
-  if (fastMode && thinkingEnabled) { thinkingEnabled = false; thinkingToggle.classList.remove('active'); localStorage.setItem('claude-dev-thinking', false); }
+  localStorage.setItem('clawline-fast', fastMode);
+  if (fastMode && thinkingEnabled) { thinkingEnabled = false; thinkingToggle.classList.remove('active'); localStorage.setItem('clawline-thinking', false); }
   setStatus(fastMode ? `Fast mode ON (${FAST_MODEL})` : 'Fast mode OFF');
   setTimeout(() => setStatus(''), 1500);
 });
-
-// Sidebar toggle
 document.getElementById('history-btn').addEventListener('click', () => sidebar.classList.toggle('open'));
 document.getElementById('sidebar-close').addEventListener('click', () => sidebar.classList.remove('open'));
 
-function getModel() {
-  return fastMode ? FAST_MODEL : modelSelect.value;
-}
+function getModel() { return fastMode ? FAST_MODEL : modelSelect.value; }
 
-// ── Tool Definitions ──
+// ── Tool Definitions (matches original extension) ──
 
 const TOOLS = [
-  { name: 'screenshot', description: 'Take a screenshot of the current browser tab.', input_schema: { type: 'object', properties: {}, required: [] } },
-  { name: 'click', description: 'Click an element. Provide EITHER ref_id (from read_page) OR coordinate [x,y] from screenshot. ref_id is preferred — it auto-scrolls and clicks the element center.', input_schema: { type: 'object', properties: { ref_id: { type: 'string', description: 'Element reference ID from accessibility tree (e.g. "ref_42"). Preferred over coordinates.' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x, y] pixels from screenshot. Used when ref_id not available.' }, action: { type: 'string', enum: ['left_click','right_click','double_click','triple_click','left_click_drag'], default: 'left_click' }, startCoordinate: { type: 'array', items: { type: 'number' } } } } },
-  { name: 'type', description: 'Type text or press keys. Provide EITHER ref_id to target a specific input field, OR coordinate to click first. Using ref_id is faster — it focuses the field, sets value, and dispatches events.', input_schema: { type: 'object', properties: { ref_id: { type: 'string', description: 'Element reference ID for the input field (e.g. "ref_42"). Preferred.' }, text: { type: 'string' }, key: { type: 'string', description: 'Enter, Tab, Escape, Backspace, Space, etc.' }, coordinate: { type: 'array', items: { type: 'number' }, description: 'Click here first, then type. Used when ref_id not available.' }, clear: { type: 'boolean', description: 'Clear existing value before typing (default false)', default: false } } } },
-  { name: 'navigate', description: 'Navigate the browser.', input_schema: { type: 'object', properties: { url: { type: 'string' }, action: { type: 'string', enum: ['goto','back','forward','refresh'], default: 'goto' } } } },
-  { name: 'read_page', description: 'Read page content as an accessibility tree with ref_IDs for each element. Use ref_id parameter to focus on a specific element subtree.', input_schema: { type: 'object', properties: { ref_id: { type: 'string', description: 'Focus on a specific element by its ref_ID (e.g. "ref_42"). Omit to read the full page.' }, depth: { type: 'number', description: 'Max tree depth (default 15). Use smaller values for large pages.', default: 15 }, max_chars: { type: 'number', description: 'Max output characters (default 30000)', default: 30000 } } } },
-  { name: 'scroll', description: 'Scroll the page.', input_schema: { type: 'object', properties: { direction: { type: 'string', enum: ['up','down','left','right'] }, amount: { type: 'number', default: 500 }, coordinate: { type: 'array', items: { type: 'number' } } }, required: ['direction'] } },
-  { name: 'hover', description: 'Hover at coordinates.', input_schema: { type: 'object', properties: { coordinate: { type: 'array', items: { type: 'number' } } }, required: ['coordinate'] } },
-  { name: 'evaluate', description: 'Execute JavaScript in the browser console. Returns the result as string.', input_schema: { type: 'object', properties: { expression: { type: 'string' } }, required: ['expression'] } },
-  { name: 'wait', description: 'Wait for a duration in ms.', input_schema: { type: 'object', properties: { duration: { type: 'number', default: 2000 } } } },
-  { name: 'zoom', description: 'Change page zoom.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['in','out','reset'] } }, required: ['action'] } },
-  { name: 'drag', description: 'Drag from start to end coordinates.', input_schema: { type: 'object', properties: { start_coordinate: { type: 'array', items: { type: 'number' }, description: '[x,y] start' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x,y] end' } }, required: ['start_coordinate', 'coordinate'] } },
-  { name: 'key_combo', description: 'Press keyboard shortcut (e.g. "ctrl+a", "cmd+c", "ctrl+shift+k").', input_schema: { type: 'object', properties: { keys: { type: 'string', description: 'Key combo like "ctrl+a", "cmd+v", "ctrl+shift+k"' } }, required: ['keys'] } },
-  { name: 'page_info', description: 'Get current page URL, title, viewport size, DOM stats. Use this to understand what page you are on.', input_schema: { type: 'object', properties: {} } },
+  { name: 'read_page', description: 'Get accessibility tree of page elements with ref_IDs. Use filter="interactive" for only buttons/links/inputs. Use ref_id to focus on a specific element subtree.', input_schema: { type: 'object', properties: { filter: { type: 'string', enum: ['interactive', 'all'], description: 'Filter: "interactive" for buttons/links/inputs only, "all" for all elements (default)' }, depth: { type: 'number', description: 'Max tree depth (default: 15)' }, ref_id: { type: 'string', description: 'Focus on a specific element by ref_ID' }, max_chars: { type: 'number', description: 'Max output chars (default: 50000)' } } } },
+  { name: 'find', description: 'Find elements by natural language query. Returns up to 20 matching elements with ref_IDs. E.g. "search bar", "login button", "product title containing organic".', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Natural language description of what to find' } }, required: ['query'] } },
+  { name: 'form_input', description: 'Set form element values by ref_ID. For checkboxes use boolean, for selects use option value/text, for inputs use string.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'Element ref_ID from read_page (e.g. "ref_1")' }, value: { type: ['string', 'boolean', 'number'], description: 'Value to set' } }, required: ['ref', 'value'] } },
+  { name: 'computer', description: 'Mouse, keyboard, and screenshot actions. Always take a screenshot first to see coordinates before clicking. Click element centers, not edges.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['left_click', 'right_click', 'type', 'screenshot', 'wait', 'scroll', 'key', 'left_click_drag', 'double_click', 'triple_click', 'hover'], description: 'Action to perform' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x, y] pixel coordinates. For drag, this is the end position.' }, text: { type: 'string', description: 'Text to type (for type action) or keys to press (for key action, e.g. "cmd+a", "Backspace")' }, duration: { type: 'number', description: 'Seconds to wait (for wait action, max 10)' }, scroll_direction: { type: 'string', enum: ['up', 'down', 'left', 'right'], description: 'Scroll direction' }, scroll_amount: { type: 'number', description: 'Scroll ticks (default 3)' }, start_coordinate: { type: 'array', items: { type: 'number' }, description: 'Start [x,y] for drag' }, ref: { type: 'string', description: 'Element ref_ID — alternative to coordinate for click/scroll_to' }, modifiers: { type: 'string', description: 'Modifier keys: "ctrl", "shift", "alt", "cmd". Combine with "+" (e.g. "ctrl+shift")' } }, required: ['action'] } },
+  { name: 'navigate', description: 'Navigate to a URL, or use "back"/"forward" for browser history.', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'URL to navigate to, or "back"/"forward" for history' } }, required: ['url'] } },
+  { name: 'get_page_text', description: 'Extract raw text content from the page. Ideal for reading articles, blog posts, or text-heavy pages. Returns plain text without HTML.', input_schema: { type: 'object', properties: { max_chars: { type: 'number', description: 'Max chars (default: 50000)' } } } },
+  { name: 'tabs_create', description: 'Create a new empty browser tab.', input_schema: { type: 'object', properties: {} } },
+  { name: 'tabs_context', description: 'Get list of all open browser tabs with their IDs, titles, and URLs.', input_schema: { type: 'object', properties: {} } },
+  { name: 'read_console_messages', description: 'Read browser console messages (console.log/error/warn). Use pattern to filter. Useful for debugging.', input_schema: { type: 'object', properties: { onlyErrors: { type: 'boolean', description: 'Only return errors (default: false)' }, pattern: { type: 'string', description: 'Regex pattern to filter messages' }, limit: { type: 'number', description: 'Max messages (default: 100)' }, clear: { type: 'boolean', description: 'Clear after reading (default: false)' } } } },
+  { name: 'read_network_requests', description: 'Read HTTP network requests (XHR, Fetch, etc). Useful for debugging API calls.', input_schema: { type: 'object', properties: { urlPattern: { type: 'string', description: 'URL pattern to filter (e.g. "/api/")' }, limit: { type: 'number', description: 'Max requests (default: 100)' }, clear: { type: 'boolean', description: 'Clear after reading (default: false)' } } } },
+  { name: 'resize_window', description: 'Resize browser window to specific dimensions. Useful for responsive testing.', input_schema: { type: 'object', properties: { width: { type: 'number' }, height: { type: 'number' } }, required: ['width', 'height'] } },
+  { name: 'javascript_tool', description: 'Execute JavaScript in the page context. Returns result of last expression. Do NOT use "return" — just write the expression.', input_schema: { type: 'object', properties: { action: { type: 'string', description: 'Must be "javascript_exec"' }, text: { type: 'string', description: 'JavaScript code to execute' } }, required: ['action', 'text'] } },
 ];
 
-const SYSTEM_PROMPT = `You are Claude, an AI assistant controlling the user's Chrome browser via a side panel.
+// ── System Prompt ──
 
-Available tools: screenshot, click, type, navigate, read_page, scroll, hover, evaluate, wait, zoom, drag, key_combo, page_info.
+const SYSTEM_PROMPT = [
+  { type: 'text', text: `You are a web automation assistant with browser tools. Your priority is to complete the user's request efficiently and safely.
 
-IMPORTANT — Efficient element interaction workflow:
-1. Use page_info to see what page you're on (URL, title, viewport)
-2. Use read_page to get the accessibility tree with ref_IDs (e.g. [ref_42])
-3. Use ref_id parameter in click/type tools — this is MUCH faster and more accurate than coordinates
-4. Only use screenshot + coordinates as a fallback when ref_id doesn't work
+Browser tasks often require long-running, agentic capabilities. Be persistent and use all available context to accomplish the task. The user expects you to work autonomously until complete.
 
-Element interaction best practices:
-- PREFER ref_id over coordinates: click({ref_id: "ref_42"}) auto-scrolls and clicks the element center
-- type({ref_id: "ref_42", text: "hello"}) sets value directly — instant, no character-by-character typing
-- Use clear: true to replace existing text in input fields
-- Use key_combo for shortcuts: key_combo({keys: "ctrl+a"}) to select all, key_combo({keys: "cmd+c"}) to copy
-- Use drag for drag-and-drop operations with start and end coordinates
-- Use read_page with ref_id to inspect a specific element's subtree: read_page({ref_id: "ref_42"})
-
-Navigation:
-- After navigate, the tool automatically waits for page load and reports the final URL
-- Only use screenshot when you need to see visual layout that the accessibility tree can't capture
-
-Guidelines:
-- Always explain what you're doing
-- Use read_page first, screenshot only when visual verification is needed
+<behavior_instructions>
+The current date is ${new Date().toLocaleDateString()}.
+- Use read_page to get element ref_IDs, then interact via ref_ID (click, form_input) — much faster than coordinate-based clicking
+- Use find to locate elements by natural language when you don't know the ref_ID
+- Use computer tool with action="screenshot" to see the visual state
+- Use form_input to set values in input fields, selects, checkboxes by ref_ID
+- Use get_page_text for reading articles and text-heavy content
+- Use tabs_context to see available tabs, tabs_create to open new ones
+- Be concise in explanations. Focus on completing the task.
 - Handle errors gracefully — if ref_id fails, fall back to coordinates
-- For forms: read_page → identify fields by ref_id → type with ref_id → click submit with ref_id`;
+- For forms: read_page → identify fields → form_input by ref → click submit
+</behavior_instructions>
+
+<tool_usage>
+Key tool workflows:
+1. See page: read_page (structured) or computer screenshot (visual)
+2. Find elements: find("search button") → get ref_IDs
+3. Click: computer left_click with ref or coordinate
+4. Type: computer type with text, or form_input with ref+value
+5. Navigate: navigate with url, or "back"/"forward"
+6. Debug: read_console_messages, read_network_requests, javascript_tool
+</tool_usage>` },
+  { type: 'text', text: `Platform: ${navigator.platform.includes('Mac') ? 'Mac — use "cmd" as modifier (cmd+a, cmd+c, cmd+v)' : 'Windows/Linux — use "ctrl" as modifier (ctrl+a, ctrl+c, ctrl+v)'}` },
+];
 
 // ── UI Helpers ──
 
-inputEl.addEventListener('input', () => {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
-});
-inputEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
+inputEl.addEventListener('input', () => { inputEl.style.height = 'auto'; inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px'; });
+inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 sendBtn.addEventListener('click', sendMessage);
 stopBtn.addEventListener('click', stopAgent);
 document.getElementById('new-chat').addEventListener('click', () => {
-  // Save current conversation before creating new
   if (activeConvId && conversation.length > 0) saveCurrentState();
   createConversation();
   conversation = [];
@@ -270,7 +249,6 @@ document.getElementById('new-chat').addEventListener('click', () => {
   renderConversationList();
 });
 
-// File upload
 fileInput.addEventListener('change', async (e) => {
   for (const file of e.target.files) {
     if (!file.type.startsWith('image/')) continue;
@@ -282,11 +260,7 @@ fileInput.addEventListener('change', async (e) => {
 });
 
 function fileToBase64(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.readAsDataURL(file);
-  });
+  return new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.readAsDataURL(file); });
 }
 
 function renderAttachments() {
@@ -302,51 +276,22 @@ function renderAttachments() {
 
 function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
 function setStatus(t) { statusEl.textContent = t; }
-function setRunning(r) {
-  isRunning = r;
-  sendBtn.disabled = r;
-  stopBtn.style.display = r ? 'flex' : 'none';
-  inputEl.disabled = r;
-}
+function setRunning(r) { isRunning = r; sendBtn.disabled = r; stopBtn.style.display = r ? 'flex' : 'none'; inputEl.disabled = r; }
+function stopAgent() { abortController?.abort(); abortController = null; setRunning(false); setStatus('Stopped'); setTimeout(() => setStatus(''), 1500); }
 
-function stopAgent() {
-  abortController?.abort();
-  abortController = null;
-  setRunning(false);
-  setStatus('Stopped');
-  setTimeout(() => setStatus(''), 1500);
-}
-
-// ── Markdown Renderer (simple) ──
+// ── Markdown Renderer ──
 
 function renderMarkdown(text) {
-  let html = text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    // Code blocks
+  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-    // Inline code
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Bold
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Headers
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Blockquote
-    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    // Horizontal rule
-    .replace(/^---$/gm, '<hr>')
-    // Unordered list
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>').replace(/^---$/gm, '<hr>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
-    // Links
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-    // Line breaks (double newline = paragraph)
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
-
-  // Wrap loose <li> in <ul>
+    .replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
   html = html.replace(/((?:<li>.*?<\/li>\s*)+)/g, '<ul>$1</ul>');
   return '<p>' + html + '</p>';
 }
@@ -358,30 +303,15 @@ function addMsg(role, content, cls) {
   div.className = `msg ${cls || role}`;
   if (role === 'ai' && typeof content === 'string') {
     div.innerHTML = renderMarkdown(content);
-    // Copy button
-    const btn = document.createElement('button');
-    btn.className = 'copy-btn';
-    btn.textContent = '📋';
+    const btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = '📋';
     btn.onclick = () => { navigator.clipboard.writeText(content); btn.textContent = '✓'; setTimeout(() => btn.textContent = '📋', 1000); };
     div.appendChild(btn);
-  } else if (typeof content === 'string') {
-    div.textContent = content;
-  } else {
-    div.appendChild(content);
-  }
-  messagesEl.appendChild(div);
-  scrollBottom();
-  return div;
+  } else if (typeof content === 'string') { div.textContent = content; }
+  else { div.appendChild(content); }
+  messagesEl.appendChild(div); scrollBottom(); return div;
 }
 
-function addThinking(text) {
-  const div = document.createElement('div');
-  div.className = 'msg thinking';
-  div.textContent = text;
-  messagesEl.appendChild(div);
-  scrollBottom();
-  return div;
-}
+function addThinking(text) { const div = document.createElement('div'); div.className = 'msg thinking'; div.textContent = text; messagesEl.appendChild(div); scrollBottom(); return div; }
 
 function addScreenshot(base64, mediaType) {
   const container = document.createElement('div');
@@ -390,175 +320,86 @@ function addScreenshot(base64, mediaType) {
   img.className = 'screenshot';
   img.onclick = () => img.classList.toggle('expanded');
   container.appendChild(img);
-  // Put screenshot in active tool group if exists
   const group = messagesEl.querySelector('.tool-group:last-child');
-  if (group) {
-    const body = group.querySelector('.tool-group-body');
-    const details = group.querySelector('.tool-group-details');
-    body.insertBefore(container, details);
-    scrollBottom();
-    return container;
-  }
+  if (group) { const body = group.querySelector('.tool-group-body'); const details = group.querySelector('.tool-group-details'); body.insertBefore(container, details); scrollBottom(); return container; }
   return addMsg('tool', container, 'tool');
 }
 
-// Tool group: collapsible container for consecutive tool calls + results
+// Tool group
 let activeToolGroup = null;
 
 function ensureToolGroup() {
   const last = messagesEl.lastElementChild;
-  if (last?.classList.contains('tool-group')) {
-    activeToolGroup = last;
-    return activeToolGroup;
-  }
+  if (last?.classList.contains('tool-group')) { activeToolGroup = last; return activeToolGroup; }
   const group = document.createElement('div');
   group.className = 'tool-group';
   const header = document.createElement('div');
   header.className = 'tool-group-header';
   header.innerHTML = '<span class="tool-group-arrow">▶</span> <span class="tool-group-label">Tools</span>';
-  header.onclick = () => {
-    group.classList.toggle('open');
-    header.querySelector('.tool-group-arrow').textContent = group.classList.contains('open') ? '▼' : '▶';
-  };
-  const body = document.createElement('div');
-  body.className = 'tool-group-body';
-  const details = document.createElement('div');
-  details.className = 'tool-group-details';
-  body.appendChild(details);
-  group.appendChild(header);
-  group.appendChild(body);
-  messagesEl.appendChild(group);
-  activeToolGroup = group;
-  scrollBottom();
-  return group;
+  header.onclick = () => { group.classList.toggle('open'); header.querySelector('.tool-group-arrow').textContent = group.classList.contains('open') ? '▼' : '▶'; };
+  const body = document.createElement('div'); body.className = 'tool-group-body';
+  const details = document.createElement('div'); details.className = 'tool-group-details';
+  body.appendChild(details); group.appendChild(header); group.appendChild(body);
+  messagesEl.appendChild(group); activeToolGroup = group; scrollBottom(); return group;
 }
 
 function addToolCall(name, args) {
   const group = ensureToolGroup();
   const body = group.querySelector('.tool-group-body');
   const details = group.querySelector('.tool-group-details');
-  const tag = document.createElement('span');
-  tag.className = 'tool-tag';
-  tag.textContent = `🔧 ${name}`;
-  if (args && Object.keys(args).length > 0) {
-    tag.title = JSON.stringify(args, null, 2);
-  }
+  const tag = document.createElement('span'); tag.className = 'tool-tag'; tag.textContent = `🔧 ${name}`;
+  if (args && Object.keys(args).length > 0) tag.title = JSON.stringify(args, null, 2);
   body.insertBefore(tag, details);
   const tags = body.querySelectorAll('.tool-tag');
-  const names = [...tags].map(t => t.textContent.replace('🔧 ', '')).join(' → ');
-  group.querySelector('.tool-group-label').textContent = names;
+  group.querySelector('.tool-group-label').textContent = [...tags].map(t => t.textContent.replace('🔧 ', '')).join(' → ');
   scrollBottom();
 }
 
 function addToolResult(text) {
   const group = activeToolGroup || ensureToolGroup();
   const details = group.querySelector('.tool-group-details');
-  const div = document.createElement('div');
-  div.className = 'tool-result-text';
-  div.textContent = text;
+  const div = document.createElement('div'); div.className = 'tool-result-text'; div.textContent = text;
   details.appendChild(div);
 }
 
-function endToolGroup() {
-  activeToolGroup = null;
+function endToolGroup() { activeToolGroup = null; }
+
+// ── Screenshot Optimization ──
+
+const SS_PX_PER_TOKEN = 28, SS_MAX_PX = 1568, SS_MAX_TOKENS = 1568;
+const SS_INIT_QUALITY = 75, SS_MIN_QUALITY = 10, SS_QUALITY_STEP = 5, SS_MAX_B64 = 1398100;
+
+function calcSSDimensions(w, h) {
+  const pxT = (sw, sh) => Math.ceil(sw / SS_PX_PER_TOKEN) * Math.ceil(sh / SS_PX_PER_TOKEN);
+  if (w <= SS_MAX_PX && h <= SS_MAX_PX && pxT(w, h) <= SS_MAX_TOKENS) return [w, h];
+  const swapped = h > w; if (swapped) [w, h] = [h, w];
+  const ratio = w / h; let lo = 1, hi = w;
+  while (lo + 1 < hi) { const mid = Math.floor((lo + hi) / 2); const sh = Math.max(Math.round(mid / ratio), 1); mid <= SS_MAX_PX && pxT(mid, sh) <= SS_MAX_TOKENS ? lo = mid : hi = mid; }
+  const rh = Math.max(Math.round(lo / ratio), 1); return swapped ? [rh, lo] : [lo, rh];
 }
 
-// ── Screenshot Optimization (matches original extension) ──
-
-const SCREENSHOT_PX_PER_TOKEN = 28;
-const SCREENSHOT_MAX_TARGET_PX = 1568;
-const SCREENSHOT_MAX_TARGET_TOKENS = 1568;
-const SCREENSHOT_INITIAL_QUALITY = 75;
-const SCREENSHOT_MIN_QUALITY = 10;
-const SCREENSHOT_QUALITY_STEP = 5;
-const SCREENSHOT_MAX_BASE64 = 1398100; // ~1.35MB
-
-// Binary search for optimal screenshot dimensions within token budget
-function calcScreenshotDimensions(w, h) {
-  const pxTokens = (sw, sh) => Math.ceil(sw / SCREENSHOT_PX_PER_TOKEN) * Math.ceil(sh / SCREENSHOT_PX_PER_TOKEN);
-  if (w <= SCREENSHOT_MAX_TARGET_PX && h <= SCREENSHOT_MAX_TARGET_PX && pxTokens(w, h) <= SCREENSHOT_MAX_TARGET_TOKENS) {
-    return [w, h];
-  }
-  // Ensure w >= h for consistent binary search
-  const swapped = h > w;
-  if (swapped) [w, h] = [h, w];
-  const ratio = w / h;
-  let lo = 1, hi = w;
-  while (lo + 1 < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    const sh = Math.max(Math.round(mid / ratio), 1);
-    if (mid <= SCREENSHOT_MAX_TARGET_PX && pxTokens(mid, sh) <= SCREENSHOT_MAX_TARGET_TOKENS) lo = mid;
-    else hi = mid;
-  }
-  const rh = Math.max(Math.round(lo / ratio), 1);
-  return swapped ? [rh, lo] : [lo, rh];
-}
-
-// Viewport dimensions tracker for coordinate mapping
 let lastViewport = { vw: 0, vh: 0, sw: 0, sh: 0 };
 
-async function captureScreenshotOptimized(tabId) {
-  await ensureDebugger(tabId);
-  {
-    const layoutMetrics = await cdp('Page.getLayoutMetrics');
-    const vw = layoutMetrics.cssVisualViewport?.clientWidth || layoutMetrics.visualViewport?.clientWidth || 1280;
-    const vh = layoutMetrics.cssVisualViewport?.clientHeight || layoutMetrics.visualViewport?.clientHeight || 720;
-    const [sw, sh] = calcScreenshotDimensions(vw, vh);
-    const scale = sw < vw ? sw / vw : 1;
-
-    // Adaptive quality: start at 75%, reduce by 5% until under size limit
-    let quality = SCREENSHOT_INITIAL_QUALITY;
-    let result;
-    while (quality >= SCREENSHOT_MIN_QUALITY) {
-      result = await cdp('Page.captureScreenshot', {
-        format: 'jpeg',
-        quality,
-        captureBeyondViewport: false,
-        fromSurface: true,
-        clip: { x: 0, y: 0, width: vw, height: vh, scale },
-      });
-      if (result.data.length <= SCREENSHOT_MAX_BASE64) break;
-      quality -= SCREENSHOT_QUALITY_STEP;
-    }
-
-    lastViewport = { vw, vh, sw, sh };
-    return {
-      base64: result.data,
-      mediaType: 'image/jpeg',
-      dimensions: `${sw}x${sh} (q${quality}, ${Math.round(result.data.length/1024)}KB)`,
-    };
-  }
-}
-
-// Scale coordinates from screenshot space back to viewport space
 function scaleCoordinate(x, y) {
   if (lastViewport.sw && lastViewport.vw && lastViewport.sw !== lastViewport.vw) {
-    const sx = lastViewport.vw / lastViewport.sw;
-    const sy = lastViewport.vh / lastViewport.sh;
-    return [Math.round(x * sx), Math.round(y * sy)];
+    return [Math.round(x * lastViewport.vw / lastViewport.sw), Math.round(y * lastViewport.vh / lastViewport.sh)];
   }
   return [x, y];
 }
 
-// ── Persistent Debugger Connection ──
-// Attach once per agent loop, detach when done. Avoids "debugging this browser" flicker.
+// ── Persistent Debugger ──
 
 let debuggerTabId = null;
 
 async function ensureDebugger(tabId) {
   if (debuggerTabId === tabId) return;
-  if (debuggerTabId) {
-    try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {}
-  }
+  if (debuggerTabId) { try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {} }
   await chrome.debugger.attach({ tabId }, '1.3');
   debuggerTabId = tabId;
 }
 
 async function releaseDebugger() {
-  if (debuggerTabId) {
-    try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {}
-    debuggerTabId = null;
-  }
+  if (debuggerTabId) { try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {} debuggerTabId = null; }
 }
 
 async function cdp(method, params) {
@@ -571,272 +412,278 @@ async function cdp(method, params) {
 async function getTargetTab() {
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   let tab = tabs.find(t => !t.url?.startsWith('chrome-extension://') && !t.url?.startsWith('chrome://'));
-  if (!tab) {
-    const all = await chrome.tabs.query({});
-    tab = all.find(t => t.url?.startsWith('http'));
-  }
+  if (!tab) { const all = await chrome.tabs.query({}); tab = all.find(t => t.url?.startsWith('http')); }
   if (!tab) throw new Error('No browser tab found. Open a webpage first.');
   return tab.id;
 }
 
+async function injectContentScript(tabId) {
+  try { await chrome.scripting.executeScript({ target: { tabId }, files: ['content-script.js'] }); } catch {}
+}
+
 async function executeTool(name, args) {
-  const tabId = name === 'wait' ? null : await getTargetTab();
+  const tabId = ['tabs_create', 'tabs_context'].includes(name) ? null : await getTargetTab();
 
   switch (name) {
-    case 'screenshot': {
-      try {
-        const shot = await captureScreenshotOptimized(tabId);
-        return { content: [{ type: 'image', source: { type: 'base64', media_type: shot.mediaType, data: shot.base64 } }] };
-      } catch {
-        // Fallback to simple capture if CDP fails
-        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 75 });
-        return { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: dataUrl.replace(/^data:image\/jpeg;base64,/, '') } }] };
-      }
-    }
-    case 'navigate': {
-      if (args.action === 'back') await chrome.tabs.goBack(tabId);
-      else if (args.action === 'forward') await chrome.tabs.goForward(tabId);
-      else if (args.action === 'refresh') await chrome.tabs.reload(tabId);
-      else if (args.url) await chrome.tabs.update(tabId, { url: args.url });
-      // Wait for page load (poll readyState, max 10s)
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        try {
-          const r = await chrome.scripting.executeScript({ target: { tabId }, func: () => document.readyState });
-          if (r?.[0]?.result === 'complete') break;
-        } catch { /* page still loading */ }
-      }
-      // Get final URL
-      const tab = await chrome.tabs.get(tabId);
-      return { content: [{ type: 'text', text: `Navigated to: ${tab.url || args.url || args.action} (page loaded — use read_page to see content)` }] };
-    }
-    case 'click': {
-      if (args.ref_id) {
-        // Ensure content script
-        try { await chrome.scripting.executeScript({ target: { tabId }, files: ['content-script.js'] }); } catch {}
-        // ref_id click: lookup element, scroll into view, click center
-        const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId, action) => {
-          const map = window.__claudeElementMap;
-          if (!map || !map[refId]) return { error: `Element ${refId} not found. Use read_page to refresh.` };
-          const el = map[refId].deref();
-          if (!el || !document.contains(el)) { delete map[refId]; return { error: `Element ${refId} no longer exists.` }; }
-          el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
-          const rect = el.getBoundingClientRect();
-          const x = rect.left + rect.width / 2;
-          const y = rect.top + rect.height / 2;
-          if (action === 'left_click' || !action) { el.click(); }
-          return { success: true, coordinates: [Math.round(x), Math.round(y)], tag: el.tagName, text: (el.textContent || '').slice(0, 50) };
-        }, args: [args.ref_id, args.action] });
-        const r = results?.[0]?.result;
-        if (r?.error) return { content: [{ type: 'text', text: r.error }] };
-        // For non-standard clicks (right, double, triple), use CDP on the computed coordinates
-        if (args.action && args.action !== 'left_click' && r?.coordinates) {
-          const [x, y] = r.coordinates;
-          const count = args.action === 'double_click' ? 2 : args.action === 'triple_click' ? 3 : 1;
-          const button = args.action === 'right_click' ? 'right' : 'left';
-          await ensureDebugger(tabId);
-          await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
-          await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
-        }
-        // Detect page change after click
-        return { content: [{ type: 'text', text: `Clicked ${args.ref_id} <${r?.tag}> "${r?.text}" at [${r?.coordinates}]` }] };
-      }
-      // Coordinate-based click (fallback)
-      const [x, y] = scaleCoordinate(...args.coordinate);
-      const count = args.action === 'double_click' ? 2 : args.action === 'triple_click' ? 3 : 1;
-      const button = args.action === 'right_click' ? 'right' : 'left';
-      await ensureDebugger(tabId);
-      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
-      return { content: [{ type: 'text', text: `Clicked [${x},${y}] (${args.action || 'left_click'})` }] };
-    }
-    case 'type': {
-      if (args.ref_id && (args.text || args.key)) {
-        try { await chrome.scripting.executeScript({ target: { tabId }, files: ['content-script.js'] }); } catch {}
-        // ref_id typing: focus element, set value directly, dispatch events
-        const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId, text, key, clear) => {
-          const map = window.__claudeElementMap;
-          if (!map || !map[refId]) return { error: `Element ${refId} not found.` };
-          const el = map[refId].deref();
-          if (!el || !document.contains(el)) { delete map[refId]; return { error: `Element ${refId} no longer exists.` }; }
-          el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
-          el.focus();
-          if (text) {
-            if (clear && ('value' in el)) el.value = '';
-            if ('value' in el) {
-              el.value = (clear ? '' : el.value) + text;
-              el.setSelectionRange?.(el.value.length, el.value.length);
-            } else if (el.isContentEditable) {
-              if (clear) el.textContent = '';
-              document.execCommand('insertText', false, text);
-            }
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          if (key) {
-            const keyMap = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, Space: 32 };
-            el.dispatchEvent(new KeyboardEvent('keydown', { key, keyCode: keyMap[key] || 0, bubbles: true }));
-            el.dispatchEvent(new KeyboardEvent('keyup', { key, keyCode: keyMap[key] || 0, bubbles: true }));
-            if (key === 'Enter') el.dispatchEvent(new KeyboardEvent('keypress', { key, keyCode: 13, bubbles: true }));
-          }
-          return { success: true, tag: el.tagName, value: ('value' in el) ? el.value?.slice(0, 50) : '' };
-        }, args: [args.ref_id, args.text || null, args.key || null, args.clear || false] });
-        const r = results?.[0]?.result;
-        if (r?.error) return { content: [{ type: 'text', text: r.error }] };
-        return { content: [{ type: 'text', text: `Typed "${args.text || args.key}" into ${args.ref_id} <${r?.tag}> (value: "${r?.value}")` }] };
-      }
-      // Coordinate-based typing (fallback via CDP + insertText)
-      await ensureDebugger(tabId);
-      {
-        if (args.coordinate) {
-          const [x, y] = scaleCoordinate(...args.coordinate);
-          await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-          await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
-          await new Promise(r => setTimeout(r, 100));
-        }
-        if (args.clear) {
-          // Select all + delete to clear field
-          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2 });
-          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2 });
-          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Backspace', windowsVirtualKeyCode: 8 });
-          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', windowsVirtualKeyCode: 8 });
-        }
-        if (args.text) {
-          // Use Input.insertText for fast text entry (handles CJK, paste-like speed)
-          await cdp('Input.insertText', { text: args.text });
-        }
-        if (args.key) {
-          const map = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, Space: 32, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
-          const code = map[args.key] || 0;
-          await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: args.key, windowsVirtualKeyCode: code });
-          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: args.key, windowsVirtualKeyCode: code });
-        }
-      }
-      return { content: [{ type: 'text', text: `Typed: ${args.text || args.key || ''}` }] };
-    }
-    case 'scroll': {
-      const amount = args.amount || 500;
-      if (args.coordinate) {
-        // Scroll at specific position via CDP mouse wheel (more precise)
-        const [x, y] = scaleCoordinate(...args.coordinate);
-        const dx = args.direction === 'left' ? -amount : args.direction === 'right' ? amount : 0;
-        const dy = args.direction === 'up' ? -amount : args.direction === 'down' ? amount : 0;
+    case 'computer': {
+      const action = args.action;
+      if (action === 'screenshot') {
         await ensureDebugger(tabId);
-                  await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: dx, deltaY: dy });
-      } else {
-        // Global scroll via scripting
-        await chrome.scripting.executeScript({ target: { tabId }, func: (dir, amt) => {
-          const dx = dir === 'left' ? -amt : dir === 'right' ? amt : 0;
-          const dy = dir === 'up' ? -amt : dir === 'down' ? amt : 0;
-          window.scrollBy(dx, dy);
-        }, args: [args.direction, amount] });
-      }
-      return { content: [{ type: 'text', text: `Scrolled ${args.direction} ${amount}px` }] };
-    }
-    case 'hover': {
-      const [x, y] = scaleCoordinate(...args.coordinate);
-      await ensureDebugger(tabId);
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-      
-      return { content: [{ type: 'text', text: `Hovered [${x},${y}]` }] };
-    }
-    case 'read_page': {
-      // Ensure content script is injected (handles pages opened before extension install)
-      try {
-        await chrome.scripting.executeScript({ target: { tabId }, files: ['content-script.js'] });
-      } catch {}
-      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId, depth, maxChars) => {
-        if (typeof window.__generateAccessibilityTree === 'function') {
-          return window.__generateAccessibilityTree('all', depth, maxChars, refId);
+        const layoutMetrics = await cdp('Page.getLayoutMetrics');
+        const vw = layoutMetrics.cssVisualViewport?.clientWidth || 1280;
+        const vh = layoutMetrics.cssVisualViewport?.clientHeight || 720;
+        const [sw, sh] = calcSSDimensions(vw, vh);
+        const scale = sw < vw ? sw / vw : 1;
+        let quality = SS_INIT_QUALITY, result;
+        while (quality >= SS_MIN_QUALITY) {
+          result = await cdp('Page.captureScreenshot', { format: 'jpeg', quality, captureBeyondViewport: false, fromSurface: true, clip: { x: 0, y: 0, width: vw, height: vh, scale } });
+          if (result.data.length <= SS_MAX_B64) break;
+          quality -= SS_QUALITY_STEP;
         }
-        return { error: 'Accessibility tree not available. Try refreshing the page.', pageContent: '', viewport: { width: window.innerWidth, height: window.innerHeight } };
-      }, args: [args.ref_id || null, args.depth || 15, args.max_chars || 30000] });
+        lastViewport = { vw, vh, sw, sh };
+        return { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: result.data } }] };
+      }
+      if (action === 'wait') {
+        await new Promise(r => setTimeout(r, (args.duration || 2) * 1000));
+        return { content: [{ type: 'text', text: `Waited ${args.duration || 2}s` }] };
+      }
+      if (['left_click', 'right_click', 'double_click', 'triple_click'].includes(action)) {
+        if (args.ref) {
+          await injectContentScript(tabId);
+          const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId, action) => {
+            const map = window.__claudeElementMap;
+            if (!map?.[refId]) return { error: `Element ${refId} not found.` };
+            const el = map[refId].deref();
+            if (!el || !document.contains(el)) { delete map[refId]; return { error: `Element ${refId} no longer exists.` }; }
+            el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+            const rect = el.getBoundingClientRect();
+            const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+            if (action === 'left_click' || !action) el.click();
+            return { success: true, coordinates: [Math.round(x), Math.round(y)], tag: el.tagName, text: (el.textContent || '').slice(0, 50) };
+          }, args: [args.ref, action] });
+          const r = results?.[0]?.result;
+          if (r?.error) return { content: [{ type: 'text', text: r.error }] };
+          if (action !== 'left_click' && r?.coordinates) {
+            const [x, y] = r.coordinates;
+            const count = action === 'double_click' ? 2 : action === 'triple_click' ? 3 : 1;
+            const button = action === 'right_click' ? 'right' : 'left';
+            await ensureDebugger(tabId);
+            await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
+            await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
+          }
+          return { content: [{ type: 'text', text: `Clicked ${args.ref} <${r?.tag}> "${r?.text}"` }] };
+        }
+        const [x, y] = scaleCoordinate(...args.coordinate);
+        const count = action === 'double_click' ? 2 : action === 'triple_click' ? 3 : 1;
+        const button = action === 'right_click' ? 'right' : 'left';
+        await ensureDebugger(tabId);
+        await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
+        return { content: [{ type: 'text', text: `Clicked [${x},${y}]` }] };
+      }
+      if (action === 'type') {
+        await ensureDebugger(tabId);
+        await cdp('Input.insertText', { text: args.text });
+        return { content: [{ type: 'text', text: `Typed: ${args.text?.slice(0, 50)}` }] };
+      }
+      if (action === 'key') {
+        await ensureDebugger(tabId);
+        const keys = args.text.split(' ');
+        const repeat = args.repeat || 1;
+        for (let r = 0; r < repeat; r++) {
+          for (const k of keys) {
+            if (k.includes('+')) {
+              // Key combo
+              const parts = k.split('+');
+              const modMap = { ctrl: 'Control', cmd: 'Meta', meta: 'Meta', alt: 'Alt', shift: 'Shift' };
+              const codeMap = { a: 65, c: 67, v: 86, x: 88, z: 90 };
+              const mods = parts.slice(0, -1);
+              const main = parts[parts.length - 1];
+              let modBits = 0;
+              for (const m of mods) { if (m === 'alt') modBits |= 1; if (m === 'ctrl') modBits |= 2; if (m === 'meta' || m === 'cmd') modBits |= 4; if (m === 'shift') modBits |= 8; }
+              for (const m of mods) await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: modMap[m] || m, modifiers: modBits });
+              const vk = codeMap[main] || main.toUpperCase().charCodeAt(0);
+              await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
+              await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
+              for (const m of mods.reverse()) await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: modMap[m] || m });
+            } else {
+              const map = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, Space: 32, Delete: 46, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
+              const code = map[k] || k.charCodeAt(0);
+              await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: k, windowsVirtualKeyCode: code });
+              await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: k, windowsVirtualKeyCode: code });
+            }
+          }
+        }
+        return { content: [{ type: 'text', text: `Key: ${args.text}${(args.repeat || 1) > 1 ? ` x${args.repeat}` : ''}` }] };
+      }
+      if (action === 'scroll') {
+        const [x, y] = args.coordinate ? scaleCoordinate(...args.coordinate) : [400, 400];
+        const dir = args.scroll_direction || 'down';
+        const ticks = args.scroll_amount || 3;
+        const dx = dir === 'left' ? -ticks * 120 : dir === 'right' ? ticks * 120 : 0;
+        const dy = dir === 'up' ? -ticks * 120 : dir === 'down' ? ticks * 120 : 0;
+        await ensureDebugger(tabId);
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: dx, deltaY: dy });
+        return { content: [{ type: 'text', text: `Scrolled ${dir} ${ticks} ticks` }] };
+      }
+      if (action === 'hover') {
+        const [x, y] = args.ref ? [0, 0] : scaleCoordinate(...args.coordinate);
+        if (args.ref) {
+          await injectContentScript(tabId);
+          await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
+            const el = window.__claudeElementMap?.[refId]?.deref();
+            if (el) { el.scrollIntoView({ behavior: 'instant', block: 'center' }); }
+          }, args: [args.ref] });
+        }
+        await ensureDebugger(tabId);
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        return { content: [{ type: 'text', text: `Hovered ${args.ref || `[${x},${y}]`}` }] };
+      }
+      if (action === 'left_click_drag') {
+        const [sx, sy] = scaleCoordinate(...args.start_coordinate);
+        const [ex, ey] = scaleCoordinate(...args.coordinate);
+        await ensureDebugger(tabId);
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none' });
+        await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
+        for (let i = 1; i <= 5; i++) {
+          await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(sx + (ex-sx)*i/5), y: Math.round(sy + (ey-sy)*i/5), button: 'left', buttons: 1 });
+        }
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ex, y: ey, button: 'left', clickCount: 1 });
+        return { content: [{ type: 'text', text: `Dragged [${sx},${sy}] → [${ex},${ey}]` }] };
+      }
+      return { content: [{ type: 'text', text: `Unknown action: ${action}` }] };
+    }
+
+    case 'read_page': {
+      await injectContentScript(tabId);
+      const filter = args.filter || 'all';
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (f, d, mc, ri) => {
+        if (typeof window.__generateAccessibilityTree === 'function') return window.__generateAccessibilityTree(f, d, mc, ri);
+        return { error: 'Content script not loaded. Try again.', pageContent: '', viewport: { width: window.innerWidth, height: window.innerHeight } };
+      }, args: [filter, args.depth || 15, args.max_chars || 50000, args.ref_id || null] });
       const result = results?.[0]?.result;
       if (result?.error) return { content: [{ type: 'text', text: `Error: ${result.error}` }] };
-      const tree = result?.pageContent || 'Empty page';
       const vp = result?.viewport;
-      const header = vp ? `[Viewport: ${vp.width}x${vp.height}]\n` : '';
-      return { content: [{ type: 'text', text: header + tree }] };
+      return { content: [{ type: 'text', text: (vp ? `[Viewport: ${vp.width}x${vp.height}]\n` : '') + (result?.pageContent || 'Empty page') }] };
     }
-    case 'evaluate': {
-      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (expr) => { try { return String(eval(expr)); } catch (e) { return 'Error: ' + e.message; } }, args: [args.expression] });
+
+    case 'find': {
+      await injectContentScript(tabId);
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (query) => {
+        const matches = [];
+        const all = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [role="link"], [onclick], [tabindex], h1, h2, h3, h4, h5, h6, label, img, [contenteditable]');
+        const q = query.toLowerCase();
+        for (const el of all) {
+          const text = (el.textContent || '').trim().slice(0, 100);
+          const label = el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('placeholder') || el.getAttribute('title') || '';
+          const combined = (text + ' ' + label).toLowerCase();
+          if (!combined.includes(q) && !el.tagName.toLowerCase().includes(q)) continue;
+          let refId;
+          for (const d in window.__claudeElementMap) { if (window.__claudeElementMap[d]?.deref() === el) { refId = d; break; } }
+          if (!refId) { refId = 'ref_' + (++window.__claudeRefCounter); window.__claudeElementMap[refId] = new WeakRef(el); }
+          const rect = el.getBoundingClientRect();
+          matches.push({ ref: refId, tag: el.tagName.toLowerCase(), text: text.slice(0, 60), label: label.slice(0, 40), visible: rect.width > 0 && rect.height > 0 });
+          if (matches.length >= 20) break;
+        }
+        return matches;
+      }, args: [args.query] });
+      const found = results?.[0]?.result || [];
+      if (found.length === 0) return { content: [{ type: 'text', text: `No elements found matching "${args.query}"` }] };
+      const lines = found.map(f => `${f.ref} <${f.tag}> "${f.text || f.label}"${f.visible ? '' : ' (hidden)'}`);
+      return { content: [{ type: 'text', text: `Found ${found.length} elements:\n${lines.join('\n')}` }] };
+    }
+
+    case 'form_input': {
+      await injectContentScript(tabId);
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (ref, value) => {
+        const map = window.__claudeElementMap;
+        if (!map?.[ref]) return { error: `Element ${ref} not found.` };
+        const el = map[ref].deref();
+        if (!el || !document.contains(el)) { delete map[ref]; return { error: `Element ${ref} no longer exists.` }; }
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
+        el.focus();
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'select') {
+          const opts = Array.from(el.options);
+          const opt = opts.find(o => o.value === String(value) || o.text.trim() === String(value));
+          if (opt) { el.value = opt.value; } else { el.value = String(value); }
+        } else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) {
+          el.checked = !!value;
+        } else if ('value' in el) {
+          el.value = String(value);
+          el.setSelectionRange?.(el.value.length, el.value.length);
+        } else if (el.isContentEditable) {
+          el.textContent = String(value);
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { success: true, tag, value: ('value' in el) ? el.value?.slice(0, 50) : String(value).slice(0, 50) };
+      }, args: [args.ref, args.value] });
+      const r = results?.[0]?.result;
+      if (r?.error) return { content: [{ type: 'text', text: r.error }] };
+      return { content: [{ type: 'text', text: `Set ${args.ref} <${r?.tag}> = "${r?.value}"` }] };
+    }
+
+    case 'navigate': {
+      const url = args.url;
+      if (url === 'back') await chrome.tabs.goBack(tabId);
+      else if (url === 'forward') await chrome.tabs.goForward(tabId);
+      else await chrome.tabs.update(tabId, { url: url.startsWith('http') ? url : 'https://' + url });
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        try { const r = await chrome.scripting.executeScript({ target: { tabId }, func: () => document.readyState }); if (r?.[0]?.result === 'complete') break; } catch {}
+      }
+      const tab = await chrome.tabs.get(tabId);
+      return { content: [{ type: 'text', text: `Navigated to: ${tab.url}` }] };
+    }
+
+    case 'get_page_text': {
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (maxChars) => {
+        const article = document.querySelector('article') || document.querySelector('[role="main"]') || document.body;
+        return (article.innerText || article.textContent || '').slice(0, maxChars);
+      }, args: [args.max_chars || 50000] });
+      return { content: [{ type: 'text', text: results?.[0]?.result || 'Empty page' }] };
+    }
+
+    case 'tabs_create': {
+      const tab = await chrome.tabs.create({ url: 'chrome://newtab' });
+      return { content: [{ type: 'text', text: `Created tab ${tab.id}` }] };
+    }
+
+    case 'tabs_context': {
+      const tabs = await chrome.tabs.query({});
+      const list = tabs.filter(t => !t.url?.startsWith('chrome-extension://')).map(t => ({ tabId: t.id, title: t.title?.slice(0, 60), url: t.url?.slice(0, 80), active: t.active }));
+      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+    }
+
+    case 'read_console_messages': {
+      // Simplified: use CDP Runtime.consoleAPICalled — requires debugger
+      return { content: [{ type: 'text', text: 'Console reading requires active debugger session. Use javascript_tool to check specific values instead.' }] };
+    }
+
+    case 'read_network_requests': {
+      return { content: [{ type: 'text', text: 'Network request reading requires active debugger session. Use javascript_tool with performance.getEntries() instead.' }] };
+    }
+
+    case 'resize_window': {
+      const win = await chrome.windows.getCurrent();
+      await chrome.windows.update(win.id, { width: args.width, height: args.height });
+      return { content: [{ type: 'text', text: `Resized to ${args.width}x${args.height}` }] };
+    }
+
+    case 'javascript_tool': {
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (code) => {
+        try { return String(eval(code)); } catch (e) { return 'Error: ' + e.message; }
+      }, args: [args.text] });
       return { content: [{ type: 'text', text: results?.[0]?.result || 'undefined' }] };
     }
-    case 'wait': {
-      await new Promise(r => setTimeout(r, args.duration || 2000));
-      return { content: [{ type: 'text', text: `Waited ${args.duration || 2000}ms` }] };
-    }
-    case 'zoom': {
-      const cur = await chrome.tabs.getZoom(tabId);
-      const z = args.action === 'in' ? Math.min(cur + 0.25, 3) : args.action === 'out' ? Math.max(cur - 0.25, 0.25) : 1;
-      await chrome.tabs.setZoom(tabId, z);
-      return { content: [{ type: 'text', text: `Zoom: ${Math.round(z * 100)}%` }] };
-    }
-    case 'drag': {
-      const [sx, sy] = scaleCoordinate(...args.start_coordinate);
-      const [ex, ey] = scaleCoordinate(...args.coordinate);
-      await ensureDebugger(tabId);
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none' });
-      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
-      const steps = 5;
-      for (let i = 1; i <= steps; i++) {
-        const mx = sx + (ex - sx) * i / steps;
-        const my = sy + (ey - sy) * i / steps;
-        await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(mx), y: Math.round(my), button: 'left', buttons: 1 });
-      }
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ex, y: ey, button: 'left', clickCount: 1 });
-      return { content: [{ type: 'text', text: `Dragged from [${sx},${sy}] to [${ex},${ey}]` }] };
-    }
-    case 'key_combo': {
-      const keys = args.keys.toLowerCase().split('+').map(k => k.trim());
-      await ensureDebugger(tabId);
-      {
-        const modMap = { ctrl: 'Control', cmd: 'Meta', meta: 'Meta', alt: 'Alt', shift: 'Shift', command: 'Meta' };
-        const codeMap = { a: 65, c: 67, v: 86, x: 88, z: 90, s: 83, f: 70, l: 76, t: 84, w: 87, r: 82, enter: 13, tab: 9, escape: 27, backspace: 8, delete: 46, space: 32, arrowup: 38, arrowdown: 40, arrowleft: 37, arrowright: 39 };
-        const modifiers = keys.filter(k => modMap[k]);
-        const mainKey = keys.find(k => !modMap[k]) || '';
-        let modBits = 0;
-        for (const m of modifiers) {
-          if (m === 'alt') modBits |= 1;
-          if (m === 'ctrl') modBits |= 2;
-          if (m === 'meta' || m === 'cmd' || m === 'command') modBits |= 4;
-          if (m === 'shift') modBits |= 8;
-        }
-        // Press modifiers
-        for (const m of modifiers) {
-          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: modMap[m], modifiers: modBits });
-        }
-        // Press main key
-        if (mainKey) {
-          const vk = codeMap[mainKey] || mainKey.toUpperCase().charCodeAt(0);
-          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: mainKey.length === 1 ? mainKey : mainKey.charAt(0).toUpperCase() + mainKey.slice(1), windowsVirtualKeyCode: vk, modifiers: modBits });
-          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: mainKey.length === 1 ? mainKey : mainKey.charAt(0).toUpperCase() + mainKey.slice(1), windowsVirtualKeyCode: vk, modifiers: modBits });
-        }
-        // Release modifiers
-        for (const m of modifiers.reverse()) {
-          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: modMap[m] });
-        }
-      }
-      return { content: [{ type: 'text', text: `Pressed: ${args.keys}` }] };
-    }
-    case 'page_info': {
-      const results = await chrome.scripting.executeScript({ target: { tabId }, func: () => ({
-        url: location.href,
-        title: document.title,
-        viewport: { width: window.innerWidth, height: window.innerHeight },
-        readyState: document.readyState,
-        domNodes: document.querySelectorAll('*').length,
-        iframeCount: document.querySelectorAll('iframe').length,
-      }) });
-      const info = results?.[0]?.result || {};
-      return { content: [{ type: 'text', text: `URL: ${info.url}\nTitle: ${info.title}\nViewport: ${info.viewport?.width}x${info.viewport?.height}\nReady: ${info.readyState}\nDOM nodes: ${info.domNodes}\nIframes: ${info.iframeCount}` }] };
-    }
+
     default:
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] };
   }
 }
 
-// ── API Retry (429/500/502/503) ──
+// ── API Retry ──
 
 async function fetchWithRetry(url, opts, maxRetries = 3) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -847,7 +694,7 @@ async function fetchWithRetry(url, opts, maxRetries = 3) {
       const wait = Math.min(1000 * Math.pow(2, attempt), 8000);
       const retryAfter = res.headers.get('retry-after');
       const delay = retryAfter ? parseInt(retryAfter) * 1000 : wait;
-      setStatus(`Rate limited, retrying in ${Math.round(delay/1000)}s...`);
+      setStatus(`Retrying in ${Math.round(delay/1000)}s...`);
       await new Promise(r => setTimeout(r, delay));
       continue;
     }
@@ -859,14 +706,12 @@ async function fetchWithRetry(url, opts, maxRetries = 3) {
 
 async function* parseSSE(response) {
   const reader = response.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
+  const dec = new TextDecoder(); let buf = '';
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop() || '';
+    const lines = buf.split('\n'); buf = lines.pop() || '';
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
       const d = line.slice(6).trim();
@@ -876,48 +721,29 @@ async function* parseSSE(response) {
   }
 }
 
-// ── Conversation Pruning (aggressive token optimization) ──
-// Strategy:
-// 1. Keep first user message (task intent) + last N turns intact
-// 2. Drop middle messages if conversation gets too long
-// 3. Strip base64 images from older messages
-// 4. Truncate long tool results (read_page trees) from older turns
+// ── Conversation Pruning ──
 
-const MAX_CONTEXT_PAIRS = 8;       // Keep last 8 assistant+user pairs
-const MAX_TOOL_TEXT_CHARS = 200;   // Truncate old tool results to this
-const RECENT_KEEP = 6;             // Keep last 6 messages fully intact
+const MAX_CONTEXT_PAIRS = 8, MAX_TOOL_TEXT = 200, RECENT_KEEP = 6;
 
 function pruneConversation(messages) {
   if (messages.length <= RECENT_KEEP) return messages;
-
   let pruned = messages;
-
-  // Step 1: if too many messages, drop middle ones
   const maxMsgs = MAX_CONTEXT_PAIRS * 2 + 2;
   if (pruned.length > maxMsgs) {
     const keep = MAX_CONTEXT_PAIRS * 2;
-    pruned = [
-      pruned[0],
-      pruned[1],
-      { role: 'user', content: `[${pruned.length - 2 - keep} earlier messages trimmed]` },
-      ...pruned.slice(-keep),
-    ];
+    pruned = [pruned[0], pruned[1], { role: 'user', content: `[${pruned.length - 2 - keep} earlier messages trimmed]` }, ...pruned.slice(-keep)];
   }
-
-  // Step 2: strip images + truncate text in non-recent messages
   return pruned.map((msg, i) => {
     if (i >= pruned.length - RECENT_KEEP) return msg;
     if (typeof msg.content === 'string') return msg;
     if (!Array.isArray(msg.content)) return msg;
     return { ...msg, content: msg.content.map(block => {
       if (block.type === 'image') return { type: 'text', text: '[screenshot]' };
-      if (block.type === 'text' && block.text?.length > MAX_TOOL_TEXT_CHARS) {
-        return { type: 'text', text: block.text.slice(0, MAX_TOOL_TEXT_CHARS) + '...[trimmed]' };
-      }
+      if (block.type === 'text' && block.text?.length > MAX_TOOL_TEXT) return { type: 'text', text: block.text.slice(0, MAX_TOOL_TEXT) + '...[trimmed]' };
       if (block.type === 'tool_result' && Array.isArray(block.content)) {
         return { ...block, content: block.content.map(b => {
           if (b.type === 'image') return { type: 'text', text: '[screenshot]' };
-          if (b.type === 'text' && b.text?.length > MAX_TOOL_TEXT_CHARS) return { type: 'text', text: b.text.slice(0, MAX_TOOL_TEXT_CHARS) + '...[trimmed]' };
+          if (b.type === 'text' && b.text?.length > MAX_TOOL_TEXT) return { type: 'text', text: b.text.slice(0, MAX_TOOL_TEXT) + '...[trimmed]' };
           return b;
         }) };
       }
@@ -931,21 +757,13 @@ function pruneConversation(messages) {
 async function sendMessage() {
   const text = inputEl.value.trim();
   if (!text || isRunning) return;
-
-  inputEl.value = '';
-  inputEl.style.height = 'auto';
+  inputEl.value = ''; inputEl.style.height = 'auto';
   addMsg('user', text);
-
-  // Build user content with optional images
   const userContent = [];
-  for (const img of pendingImages) {
-    userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
-  }
+  for (const img of pendingImages) userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
   userContent.push({ type: 'text', text });
   conversation.push({ role: 'user', content: userContent.length === 1 ? text : userContent });
-  pendingImages = [];
-  attachmentsEl.innerHTML = '';
-
+  pendingImages = []; attachmentsEl.innerHTML = '';
   await runAgentLoop();
 }
 
@@ -955,7 +773,7 @@ async function runAgentLoop() {
 
   try {
     for (let step = 1; step <= MAX_LOOPS; step++) {
-      setStatus(`Thinking... (step ${step})`);
+      setStatus(`Step ${step}...`);
 
       const body = {
         model: getModel(),
@@ -965,10 +783,7 @@ async function runAgentLoop() {
         messages: pruneConversation(conversation),
         stream: true,
       };
-      // Extended thinking
-      if (thinkingEnabled) {
-        body.thinking = { type: 'enabled', budget_tokens: THINKING_BUDGET };
-      }
+      if (thinkingEnabled) body.thinking = { type: 'enabled', budget_tokens: THINKING_BUDGET };
 
       const res = await fetchWithRetry(`${API_URL}/v1/messages`, {
         method: 'POST',
@@ -979,7 +794,6 @@ async function runAgentLoop() {
 
       if (!res.ok) { addMsg('system', `API Error ${res.status}: ${await res.text()}`); break; }
 
-      // Parse response
       const blocks = [];
       let textDiv = null, textBuf = '', toolBuf = null, stopReason = null;
 
@@ -989,7 +803,7 @@ async function runAgentLoop() {
           case 'content_block_start':
             if (evt.content_block?.type === 'text') { textDiv = addMsg('ai', ''); textBuf = ''; }
             else if (evt.content_block?.type === 'tool_use') { toolBuf = { id: evt.content_block.id, name: evt.content_block.name, input: '' }; }
-            else if (evt.content_block?.type === 'thinking') { textDiv = addThinking(''); textBuf = ''; setStatus('Thinking deeply...'); }
+            else if (evt.content_block?.type === 'thinking') { textDiv = addThinking(''); textBuf = ''; setStatus('Thinking...'); }
             break;
           case 'content_block_delta':
             if (evt.delta?.type === 'text_delta') { textBuf += evt.delta.text; if (textDiv) textDiv.innerHTML = renderMarkdown(textBuf); scrollBottom(); }
@@ -999,9 +813,8 @@ async function runAgentLoop() {
           case 'content_block_stop':
             if (textBuf && textDiv && !textDiv.classList.contains('thinking')) {
               blocks.push({ type: 'text', text: textBuf });
-              // Add copy button
               const btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = '📋';
-              btn.onclick = () => { navigator.clipboard.writeText(textBuf); btn.textContent = '✓'; setTimeout(() => btn.textContent = '📋', 1000); };
+              const t = textBuf; btn.onclick = () => { navigator.clipboard.writeText(t); btn.textContent = '✓'; setTimeout(() => btn.textContent = '📋', 1000); };
               textDiv.appendChild(btn);
             }
             if (toolBuf) {
@@ -1049,9 +862,7 @@ async function runAgentLoop() {
     if (err.name !== 'AbortError') addMsg('system', `Error: ${err.message}`);
   } finally {
     await releaseDebugger();
-    setRunning(false);
-    setStatus('');
-    inputEl.focus();
+    setRunning(false); setStatus(''); inputEl.focus();
     saveCurrentState();
   }
 }
@@ -1063,9 +874,7 @@ loadConversations().then(() => {
     conversation = conv.messages || [];
     messagesEl.innerHTML = conv.displayMessages || '';
     scrollBottom();
-  } else {
-    createConversation();
-  }
+  } else { createConversation(); }
   renderConversationList();
 });
 setStatus('Ready');
