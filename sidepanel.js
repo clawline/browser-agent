@@ -277,6 +277,7 @@ document.getElementById('new-chat').addEventListener('click', () => {
   messagesEl.innerHTML = '';
   pendingImages = [];
   attachmentsEl.innerHTML = '';
+  lockedTabId = null; // Reset tab lock for new conversation
   renderConversationList();
 });
 
@@ -514,11 +515,22 @@ async function cdp(method, params) {
 
 // ── Tool Execution ──
 
+// Lock target tab at start of agent loop — survives user switching tabs
+let lockedTabId = null;
+
 async function getTargetTab() {
+  if (lockedTabId) {
+    try {
+      const tab = await chrome.tabs.get(lockedTabId);
+      if (tab && !tab.url?.startsWith('chrome://')) return lockedTabId;
+    } catch {}
+    lockedTabId = null;
+  }
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   let tab = tabs.find(t => !t.url?.startsWith('chrome-extension://') && !t.url?.startsWith('chrome://'));
   if (!tab) { const all = await chrome.tabs.query({}); tab = all.find(t => t.url?.startsWith('http')); }
   if (!tab) throw new Error('No browser tab found. Open a webpage first.');
+  lockedTabId = tab.id;
   return tab.id;
 }
 
@@ -757,8 +769,8 @@ async function executeTool(name, args) {
 
     case 'tabs_context': {
       const tabs = await chrome.tabs.query({});
-      const list = tabs.filter(t => !t.url?.startsWith('chrome-extension://')).map(t => ({ tabId: t.id, title: t.title?.slice(0, 60), url: t.url?.slice(0, 80), active: t.active }));
-      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+      const list = tabs.filter(t => !t.url?.startsWith('chrome-extension://')).map(t => ({ tabId: t.id, title: t.title?.slice(0, 60), url: t.url?.slice(0, 80), active: t.active, locked: t.id === lockedTabId }));
+      return { content: [{ type: 'text', text: `Current locked tab: ${lockedTabId || 'none'}\n${JSON.stringify(list, null, 2)}` }] };
     }
 
     case 'read_console_messages': {
