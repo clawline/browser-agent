@@ -199,6 +199,8 @@ const TOOLS = [
   { name: 'read_network_requests', description: 'Read HTTP network requests (XHR, Fetch, etc). Useful for debugging API calls.', input_schema: { type: 'object', properties: { urlPattern: { type: 'string', description: 'URL pattern to filter (e.g. "/api/")' }, limit: { type: 'number', description: 'Max requests (default: 100)' }, clear: { type: 'boolean', description: 'Clear after reading (default: false)' } } } },
   { name: 'resize_window', description: 'Resize browser window to specific dimensions. Useful for responsive testing.', input_schema: { type: 'object', properties: { width: { type: 'number' }, height: { type: 'number' } }, required: ['width', 'height'] } },
   { name: 'javascript_tool', description: 'Execute JavaScript in the page context. Returns result of last expression. Do NOT use "return" — just write the expression.', input_schema: { type: 'object', properties: { action: { type: 'string', description: 'Must be "javascript_exec"' }, text: { type: 'string', description: 'JavaScript code to execute' } }, required: ['action', 'text'] } },
+  { name: 'file_upload', description: 'Upload files to a file input element. Do NOT click file inputs — use this tool with the ref_ID instead. Paths must be absolute.', input_schema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths to upload' }, ref: { type: 'string', description: 'ref_ID of the file input element' } }, required: ['paths', 'ref'] } },
+  { name: 'update_plan', description: 'Present a plan to the user before proceeding with complex tasks.', input_schema: { type: 'object', properties: { domains: { type: 'array', items: { type: 'string' }, description: 'Domains to visit' }, approach: { type: 'array', items: { type: 'string' }, description: 'Ordered steps (3-7)' } }, required: ['domains', 'approach'] } },
 ];
 
 // ── System Prompt ──
@@ -314,55 +316,85 @@ function addMsg(role, content, cls) {
 function addThinking(text) { const div = document.createElement('div'); div.className = 'msg thinking'; div.textContent = text; messagesEl.appendChild(div); scrollBottom(); return div; }
 
 function addScreenshot(base64, mediaType) {
+  // If inside a tool group, add as inline thumbnail on the last step
+  if (activeToolGroup) {
+    const body = activeToolGroup.querySelector('.tool-group-body');
+    const lastStep = body?.querySelector('.tool-step:last-child');
+    if (lastStep) {
+      const img = document.createElement('img');
+      img.src = `data:${mediaType || 'image/jpeg'};base64,${base64}`;
+      img.className = 'tool-step-thumb';
+      img.onclick = (e) => { e.stopPropagation(); img.classList.toggle('expanded'); };
+      lastStep.appendChild(img);
+      scrollBottom();
+      return img;
+    }
+  }
+  // Fallback: standalone
   const container = document.createElement('div');
   const img = document.createElement('img');
-  img.src = `data:${mediaType || 'image/png'};base64,${base64}`;
+  img.src = `data:${mediaType || 'image/jpeg'};base64,${base64}`;
   img.className = 'screenshot';
   img.onclick = () => img.classList.toggle('expanded');
   container.appendChild(img);
-  const group = messagesEl.querySelector('.tool-group:last-child');
-  if (group) { const body = group.querySelector('.tool-group-body'); const details = group.querySelector('.tool-group-details'); body.insertBefore(container, details); scrollBottom(); return container; }
   return addMsg('tool', container, 'tool');
 }
 
-// Tool group
+// Tool group — step-based layout (matches original extension UI)
 let activeToolGroup = null;
+let stepCount = 0;
 
 function ensureToolGroup() {
   const last = messagesEl.lastElementChild;
   if (last?.classList.contains('tool-group')) { activeToolGroup = last; return activeToolGroup; }
   const group = document.createElement('div');
   group.className = 'tool-group';
+  stepCount = 0;
   const header = document.createElement('div');
   header.className = 'tool-group-header';
-  header.innerHTML = '<span class="tool-group-arrow">▶</span> <span class="tool-group-label">Tools</span>';
-  header.onclick = () => { group.classList.toggle('open'); header.querySelector('.tool-group-arrow').textContent = group.classList.contains('open') ? '▼' : '▶'; };
+  header.innerHTML = '<span class="tool-group-count">0 steps</span> <span class="tool-group-arrow">›</span>';
+  header.onclick = () => { group.classList.toggle('collapsed'); header.querySelector('.tool-group-arrow').textContent = group.classList.contains('collapsed') ? '›' : '⌄'; };
   const body = document.createElement('div'); body.className = 'tool-group-body';
-  const details = document.createElement('div'); details.className = 'tool-group-details';
-  body.appendChild(details); group.appendChild(header); group.appendChild(body);
+  group.appendChild(header); group.appendChild(body);
   messagesEl.appendChild(group); activeToolGroup = group; scrollBottom(); return group;
 }
 
 function addToolCall(name, args) {
   const group = ensureToolGroup();
   const body = group.querySelector('.tool-group-body');
-  const details = group.querySelector('.tool-group-details');
-  const tag = document.createElement('span'); tag.className = 'tool-tag'; tag.textContent = `🔧 ${name}`;
-  if (args && Object.keys(args).length > 0) tag.title = JSON.stringify(args, null, 2);
-  body.insertBefore(tag, details);
-  const tags = body.querySelectorAll('.tool-tag');
-  group.querySelector('.tool-group-label').textContent = [...tags].map(t => t.textContent.replace('🔧 ', '')).join(' → ');
+  stepCount++;
+  const row = document.createElement('div'); row.className = 'tool-step';
+  const icons = { screenshot: '📷', left_click: '👆', right_click: '👆', double_click: '👆', triple_click: '👆', type: '⌨️', key: '⌨️', scroll: '📜', hover: '🖱️', wait: '⏱️', left_click_drag: '✋', navigate: '🧭', read_page: '📖', find: '🔍', form_input: '📝', get_page_text: '📄', javascript_tool: '💻', tabs_create: '➕', tabs_context: '📑', read_console_messages: '🖥️', read_network_requests: '🌐', resize_window: '📐', file_upload: '📎', update_plan: '📋', computer: '🖥️' };
+  const action = args?.action;
+  const icon = icons[action] || icons[name] || '🔧';
+  let label;
+  if (name === 'computer') {
+    const labels = { screenshot: 'Take screenshot', left_click: 'Click', right_click: 'Right click', double_click: 'Double click', triple_click: 'Triple click', type: 'Type', key: 'Key press', scroll: 'Scroll', hover: 'Hover', wait: `Wait ${args?.duration || 2}s`, left_click_drag: 'Drag' };
+    label = labels[action] || action || 'Computer';
+  } else {
+    const labels = { read_page: `Read page${args?.filter === 'interactive' ? ' (interactive)' : ''}`, find: `Find "${(args?.query || '').slice(0, 25)}"`, form_input: `Set ${args?.ref}`, navigate: 'Navigate', get_page_text: 'Get page text', javascript_tool: 'JavaScript', tabs_create: 'Create tab', tabs_context: 'Tab context', read_console_messages: 'Console', read_network_requests: 'Network', resize_window: 'Resize', file_upload: 'Upload file', update_plan: 'Update plan' };
+    label = labels[name] || name.replace(/_/g, ' ');
+  }
+  row.innerHTML = `<span class="tool-step-icon">${icon}</span><span class="tool-step-label">${escapeHtml(label)}</span>`;
+  body.appendChild(row);
+  group.querySelector('.tool-group-count').textContent = `${stepCount} steps`;
   scrollBottom();
+  return row;
 }
 
 function addToolResult(text) {
-  const group = activeToolGroup || ensureToolGroup();
-  const details = group.querySelector('.tool-group-details');
-  const div = document.createElement('div'); div.className = 'tool-result-text'; div.textContent = text;
-  details.appendChild(div);
+  if (!activeToolGroup) return;
+  const body = activeToolGroup.querySelector('.tool-group-body');
+  const lastStep = body?.querySelector('.tool-step:last-child');
+  if (lastStep && text.length <= 100) {
+    // Short result: show inline on the step row
+    const detail = document.createElement('span'); detail.className = 'tool-step-detail'; detail.textContent = text;
+    lastStep.appendChild(detail);
+  }
+  // Long results are silently consumed (Claude already has them via tool_result)
 }
 
-function endToolGroup() { activeToolGroup = null; }
+function endToolGroup() { activeToolGroup = null; stepCount = 0; }
 
 // ── Screenshot Optimization ──
 
@@ -657,12 +689,84 @@ async function executeTool(name, args) {
     }
 
     case 'read_console_messages': {
-      // Simplified: use CDP Runtime.consoleAPICalled — requires debugger
-      return { content: [{ type: 'text', text: 'Console reading requires active debugger session. Use javascript_tool to check specific values instead.' }] };
+      await ensureDebugger(tabId);
+      await cdp('Runtime.enable');
+      // Collect console messages via CDP — read existing ones
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (onlyErrors, pattern, limit) => {
+        // Intercept console if not already done
+        if (!window.__clawlineConsoleMsgs) {
+          window.__clawlineConsoleMsgs = [];
+          const orig = {};
+          for (const m of ['log','warn','error','info','debug']) {
+            orig[m] = console[m];
+            console[m] = function(...args) {
+              window.__clawlineConsoleMsgs.push({ type: m, text: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), ts: Date.now() });
+              if (window.__clawlineConsoleMsgs.length > 500) window.__clawlineConsoleMsgs.shift();
+              orig[m].apply(console, args);
+            };
+          }
+          window.addEventListener('error', e => window.__clawlineConsoleMsgs.push({ type: 'exception', text: e.message + ' at ' + e.filename + ':' + e.lineno, ts: Date.now() }));
+        }
+        let msgs = window.__clawlineConsoleMsgs;
+        if (onlyErrors) msgs = msgs.filter(m => m.type === 'error' || m.type === 'exception');
+        if (pattern) { const re = new RegExp(pattern, 'i'); msgs = msgs.filter(m => re.test(m.text)); }
+        return msgs.slice(-(limit || 100));
+      }, args: [args.onlyErrors || false, args.pattern || null, args.limit || 100] });
+      const msgs = results?.[0]?.result || [];
+      if (args.clear) await chrome.scripting.executeScript({ target: { tabId }, func: () => { window.__clawlineConsoleMsgs = []; } });
+      if (msgs.length === 0) return { content: [{ type: 'text', text: 'No console messages found.' }] };
+      const lines = msgs.map(m => `[${m.type}] ${m.text}`).join('\n');
+      return { content: [{ type: 'text', text: `${msgs.length} console messages:\n${lines}` }] };
     }
 
     case 'read_network_requests': {
-      return { content: [{ type: 'text', text: 'Network request reading requires active debugger session. Use javascript_tool with performance.getEntries() instead.' }] };
+      await ensureDebugger(tabId);
+      // Inject network tracker if not present
+      await chrome.scripting.executeScript({ target: { tabId }, func: () => {
+        if (window.__clawlineNetReqs) return;
+        window.__clawlineNetReqs = [];
+        const origFetch = window.fetch;
+        window.fetch = async function(...args) {
+          const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+          const method = args[1]?.method || 'GET';
+          const start = Date.now();
+          try {
+            const res = await origFetch.apply(this, args);
+            window.__clawlineNetReqs.push({ url, method, status: res.status, duration: Date.now() - start, ts: start });
+            if (window.__clawlineNetReqs.length > 500) window.__clawlineNetReqs.shift();
+            return res;
+          } catch (e) {
+            window.__clawlineNetReqs.push({ url, method, status: 0, error: e.message, duration: Date.now() - start, ts: start });
+            throw e;
+          }
+        };
+        const origXHR = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          this.__clawlineReq = { url: String(url), method, ts: Date.now() };
+          return origXHR.apply(this, arguments);
+        };
+        const origSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function() {
+          const req = this.__clawlineReq;
+          if (req) {
+            this.addEventListener('loadend', () => {
+              window.__clawlineNetReqs.push({ ...req, status: this.status, duration: Date.now() - req.ts });
+              if (window.__clawlineNetReqs.length > 500) window.__clawlineNetReqs.shift();
+            });
+          }
+          return origSend.apply(this, arguments);
+        };
+      } });
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (urlPattern, limit) => {
+        let reqs = window.__clawlineNetReqs || [];
+        if (urlPattern) reqs = reqs.filter(r => r.url.includes(urlPattern));
+        return reqs.slice(-(limit || 100));
+      }, args: [args.urlPattern || null, args.limit || 100] });
+      const reqs = results?.[0]?.result || [];
+      if (args.clear) await chrome.scripting.executeScript({ target: { tabId }, func: () => { window.__clawlineNetReqs = []; } });
+      if (reqs.length === 0) return { content: [{ type: 'text', text: 'No network requests captured.' }] };
+      const lines = reqs.map(r => `${r.method} ${r.status} ${r.url.slice(0, 80)} (${r.duration}ms)`).join('\n');
+      return { content: [{ type: 'text', text: `${reqs.length} requests:\n${lines}` }] };
     }
 
     case 'resize_window': {
@@ -676,6 +780,42 @@ async function executeTool(name, args) {
         try { return String(eval(code)); } catch (e) { return 'Error: ' + e.message; }
       }, args: [args.text] });
       return { content: [{ type: 'text', text: results?.[0]?.result || 'undefined' }] };
+    }
+
+    case 'file_upload': {
+      if (!args.paths?.length || !args.ref) return { content: [{ type: 'text', text: 'paths and ref are required' }] };
+      await injectContentScript(tabId);
+      await ensureDebugger(tabId);
+      // Get the element's CDP object ID via Runtime.evaluate
+      const evalResult = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
+        const el = window.__claudeElementMap?.[refId]?.deref();
+        if (!el) return { error: `Element ${refId} not found` };
+        // Tag element for CDP lookup
+        const attr = '__clawline_file_' + Date.now();
+        el.setAttribute(attr, '1');
+        return { attr, tag: el.tagName };
+      }, args: [args.ref] });
+      const r = evalResult?.[0]?.result;
+      if (r?.error) return { content: [{ type: 'text', text: r.error }] };
+      // Find element in CDP DOM
+      await cdp('DOM.enable');
+      const doc = await cdp('DOM.getDocument');
+      const node = await cdp('DOM.querySelector', { nodeId: doc.root.nodeId, selector: `[${r.attr}]` });
+      if (!node?.nodeId) { await cdp('DOM.disable'); return { content: [{ type: 'text', text: 'Could not find element via CDP' }] }; }
+      await cdp('DOM.setFileInputFiles', { files: args.paths, nodeId: node.nodeId });
+      // Cleanup attribute
+      await chrome.scripting.executeScript({ target: { tabId }, func: (attr) => {
+        const el = document.querySelector(`[${attr}]`);
+        if (el) el.removeAttribute(attr);
+      }, args: [r.attr] });
+      await cdp('DOM.disable');
+      return { content: [{ type: 'text', text: `Uploaded ${args.paths.length} file(s) to ${args.ref}` }] };
+    }
+
+    case 'update_plan': {
+      const steps = args.approach?.join('\n• ') || '';
+      const domains = args.domains?.join(', ') || '';
+      return { content: [{ type: 'text', text: `Plan updated:\nDomains: ${domains}\nSteps:\n• ${steps}` }] };
     }
 
     default:
