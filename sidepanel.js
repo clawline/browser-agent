@@ -195,7 +195,7 @@ const TOOLS = [
   { name: 'read_page', description: 'Get accessibility tree of page elements with ref_IDs. Use filter="interactive" for only buttons/links/inputs. Use ref_id to focus on a specific element subtree.', input_schema: { type: 'object', properties: { filter: { type: 'string', enum: ['interactive', 'all'], description: 'Filter: "interactive" for buttons/links/inputs only, "all" for all elements (default)' }, depth: { type: 'number', description: 'Max tree depth (default: 15)' }, ref_id: { type: 'string', description: 'Focus on a specific element by ref_ID' }, max_chars: { type: 'number', description: 'Max output chars (default: 15000)' } } } },
   { name: 'find', description: 'Find elements by natural language query. Returns up to 20 matching elements with ref_IDs. E.g. "search bar", "login button", "product title containing organic".', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Natural language description of what to find' } }, required: ['query'] } },
   { name: 'form_input', description: 'Set form element values by ref_ID. For checkboxes use boolean, for selects use option value/text, for inputs use string.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'Element ref_ID from read_page (e.g. "ref_1")' }, value: { type: ['string', 'boolean', 'number'], description: 'Value to set' } }, required: ['ref', 'value'] } },
-  { name: 'computer', description: 'Mouse, keyboard, and screenshot actions. Always take a screenshot first to see coordinates before clicking. Click element centers, not edges.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['left_click', 'right_click', 'type', 'screenshot', 'wait', 'scroll', 'key', 'left_click_drag', 'double_click', 'triple_click', 'hover'], description: 'Action to perform' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x, y] pixel coordinates. For drag, this is the end position.' }, text: { type: 'string', description: 'Text to type (for type action) or keys to press (for key action, e.g. "cmd+a", "Backspace")' }, duration: { type: 'number', description: 'Seconds to wait (for wait action, max 10)' }, scroll_direction: { type: 'string', enum: ['up', 'down', 'left', 'right'], description: 'Scroll direction' }, scroll_amount: { type: 'number', description: 'Scroll ticks (default 3)' }, start_coordinate: { type: 'array', items: { type: 'number' }, description: 'Start [x,y] for drag' }, ref: { type: 'string', description: 'Element ref_ID — alternative to coordinate for click/scroll_to' }, modifiers: { type: 'string', description: 'Modifier keys: "ctrl", "shift", "alt", "cmd". Combine with "+" (e.g. "ctrl+shift")' } }, required: ['action'] } },
+  { name: 'computer', description: 'Mouse, keyboard, and screenshot actions. Always take a screenshot first to see coordinates before clicking. Click element centers, not edges.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['left_click', 'right_click', 'type', 'screenshot', 'wait', 'scroll', 'key', 'left_click_drag', 'double_click', 'triple_click', 'zoom', 'scroll_to', 'hover'], description: 'Action to perform. zoom: capture a specific region for closer inspection. scroll_to: scroll element into view by ref.' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x, y] pixel coordinates. For drag, this is the end position.' }, text: { type: 'string', description: 'Text to type (for type action) or keys to press (for key action, e.g. "cmd+a", "Backspace")' }, duration: { type: 'number', description: 'Seconds to wait (for wait action, max 10)' }, scroll_direction: { type: 'string', enum: ['up', 'down', 'left', 'right'], description: 'Scroll direction' }, scroll_amount: { type: 'number', description: 'Scroll ticks (default 3)' }, start_coordinate: { type: 'array', items: { type: 'number' }, description: 'Start [x,y] for drag' }, region: { type: 'array', items: { type: 'number' }, description: '[x0, y0, x1, y1] rectangle to capture for zoom action' }, repeat: { type: 'number', description: 'Times to repeat key sequence (for key action, default 1)' }, ref: { type: 'string', description: 'Element ref_ID — alternative to coordinate for click/scroll_to' }, modifiers: { type: 'string', description: 'Modifier keys: "ctrl", "shift", "alt", "cmd". Combine with "+" (e.g. "ctrl+shift")' } }, required: ['action'] } },
   { name: 'navigate', description: 'Navigate to a URL, or use "back"/"forward" for browser history.', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'URL to navigate to, or "back"/"forward" for history' } }, required: ['url'] } },
   { name: 'get_page_text', description: 'Extract raw text content from the page. Ideal for reading articles, blog posts, or text-heavy pages. Returns plain text without HTML.', input_schema: { type: 'object', properties: { max_chars: { type: 'number', description: 'Max chars (default: 15000)' } } } },
   { name: 'tabs_create', description: 'Create a new empty browser tab.', input_schema: { type: 'object', properties: {} } },
@@ -667,6 +667,29 @@ async function executeTool(name, args) {
         }
         await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ex, y: ey, button: 'left', clickCount: 1 });
         return { content: [{ type: 'text', text: `Dragged [${sx},${sy}] → [${ex},${ey}]` }] };
+      }
+      if (action === 'zoom') {
+        // Capture a specific region at full resolution for inspection
+        const [x0, y0, x1, y1] = args.region || [0, 0, 400, 300];
+        await ensureDebugger(tabId);
+        const result = await cdp('Page.captureScreenshot', {
+          format: 'jpeg', quality: 90, captureBeyondViewport: false, fromSurface: true,
+          clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0, scale: 2 },
+        });
+        return { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: result.data } }] };
+      }
+      if (action === 'scroll_to') {
+        if (!args.ref) return { content: [{ type: 'text', text: 'scroll_to requires ref parameter' }] };
+        await injectContentScript(tabId);
+        const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
+          const el = window.__claudeElementMap?.[refId]?.deref();
+          if (!el) return { error: `Element ${refId} not found` };
+          el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+          return { success: true, tag: el.tagName };
+        }, args: [args.ref] });
+        const r = results?.[0]?.result;
+        if (r?.error) return { content: [{ type: 'text', text: r.error }] };
+        return { content: [{ type: 'text', text: `Scrolled to ${args.ref} <${r?.tag}>` }] };
       }
       return { content: [{ type: 'text', text: `Unknown action: ${action}` }] };
     }
