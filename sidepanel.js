@@ -187,12 +187,12 @@ function getModel() { return fastMode ? FAST_MODEL : modelSelect.value; }
 // ── Tool Definitions (matches original extension) ──
 
 const TOOLS = [
-  { name: 'read_page', description: 'Get accessibility tree of page elements with ref_IDs. Use filter="interactive" for only buttons/links/inputs. Use ref_id to focus on a specific element subtree.', input_schema: { type: 'object', properties: { filter: { type: 'string', enum: ['interactive', 'all'], description: 'Filter: "interactive" for buttons/links/inputs only, "all" for all elements (default)' }, depth: { type: 'number', description: 'Max tree depth (default: 15)' }, ref_id: { type: 'string', description: 'Focus on a specific element by ref_ID' }, max_chars: { type: 'number', description: 'Max output chars (default: 50000)' } } } },
+  { name: 'read_page', description: 'Get accessibility tree of page elements with ref_IDs. Use filter="interactive" for only buttons/links/inputs. Use ref_id to focus on a specific element subtree.', input_schema: { type: 'object', properties: { filter: { type: 'string', enum: ['interactive', 'all'], description: 'Filter: "interactive" for buttons/links/inputs only, "all" for all elements (default)' }, depth: { type: 'number', description: 'Max tree depth (default: 15)' }, ref_id: { type: 'string', description: 'Focus on a specific element by ref_ID' }, max_chars: { type: 'number', description: 'Max output chars (default: 15000)' } } } },
   { name: 'find', description: 'Find elements by natural language query. Returns up to 20 matching elements with ref_IDs. E.g. "search bar", "login button", "product title containing organic".', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Natural language description of what to find' } }, required: ['query'] } },
   { name: 'form_input', description: 'Set form element values by ref_ID. For checkboxes use boolean, for selects use option value/text, for inputs use string.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'Element ref_ID from read_page (e.g. "ref_1")' }, value: { type: ['string', 'boolean', 'number'], description: 'Value to set' } }, required: ['ref', 'value'] } },
   { name: 'computer', description: 'Mouse, keyboard, and screenshot actions. Always take a screenshot first to see coordinates before clicking. Click element centers, not edges.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['left_click', 'right_click', 'type', 'screenshot', 'wait', 'scroll', 'key', 'left_click_drag', 'double_click', 'triple_click', 'hover'], description: 'Action to perform' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x, y] pixel coordinates. For drag, this is the end position.' }, text: { type: 'string', description: 'Text to type (for type action) or keys to press (for key action, e.g. "cmd+a", "Backspace")' }, duration: { type: 'number', description: 'Seconds to wait (for wait action, max 10)' }, scroll_direction: { type: 'string', enum: ['up', 'down', 'left', 'right'], description: 'Scroll direction' }, scroll_amount: { type: 'number', description: 'Scroll ticks (default 3)' }, start_coordinate: { type: 'array', items: { type: 'number' }, description: 'Start [x,y] for drag' }, ref: { type: 'string', description: 'Element ref_ID — alternative to coordinate for click/scroll_to' }, modifiers: { type: 'string', description: 'Modifier keys: "ctrl", "shift", "alt", "cmd". Combine with "+" (e.g. "ctrl+shift")' } }, required: ['action'] } },
   { name: 'navigate', description: 'Navigate to a URL, or use "back"/"forward" for browser history.', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'URL to navigate to, or "back"/"forward" for history' } }, required: ['url'] } },
-  { name: 'get_page_text', description: 'Extract raw text content from the page. Ideal for reading articles, blog posts, or text-heavy pages. Returns plain text without HTML.', input_schema: { type: 'object', properties: { max_chars: { type: 'number', description: 'Max chars (default: 50000)' } } } },
+  { name: 'get_page_text', description: 'Extract raw text content from the page. Ideal for reading articles, blog posts, or text-heavy pages. Returns plain text without HTML.', input_schema: { type: 'object', properties: { max_chars: { type: 'number', description: 'Max chars (default: 15000)' } } } },
   { name: 'tabs_create', description: 'Create a new empty browser tab.', input_schema: { type: 'object', properties: {} } },
   { name: 'tabs_context', description: 'Get list of all open browser tabs with their IDs, titles, and URLs.', input_schema: { type: 'object', properties: {} } },
   { name: 'read_console_messages', description: 'Read browser console messages (console.log/error/warn). Use pattern to filter. Useful for debugging.', input_schema: { type: 'object', properties: { onlyErrors: { type: 'boolean', description: 'Only return errors (default: false)' }, pattern: { type: 'string', description: 'Regex pattern to filter messages' }, limit: { type: 'number', description: 'Max messages (default: 100)' }, clear: { type: 'boolean', description: 'Clear after reading (default: false)' } } } },
@@ -225,12 +225,13 @@ The current date is ${new Date().toLocaleDateString()}.
 
 <tool_usage>
 Key tool workflows:
-1. See page: read_page (structured) or computer screenshot (visual)
+1. See page: read_page with filter="interactive" first (much smaller). Only use filter="all" if you need non-interactive elements.
 2. Find elements: find("search button") → get ref_IDs
 3. Click: computer left_click with ref or coordinate
-4. Type: computer type with text, or form_input with ref+value
+4. Type: computer type with text, or form_input with ref+value (preferred for forms)
 5. Navigate: navigate with url, or "back"/"forward"
 6. Debug: read_console_messages, read_network_requests, javascript_tool
+7. Screenshot: only when you need visual layout. read_page is cheaper on tokens.
 </tool_usage>` },
   { type: 'text', text: `Platform: ${navigator.platform.includes('Mac') ? 'Mac — use "cmd" as modifier (cmd+a, cmd+c, cmd+v)' : 'Windows/Linux — use "ctrl" as modifier (ctrl+a, ctrl+c, ctrl+v)'}` },
 ];
@@ -592,7 +593,7 @@ async function executeTool(name, args) {
       const results = await chrome.scripting.executeScript({ target: { tabId }, func: (f, d, mc, ri) => {
         if (typeof window.__generateAccessibilityTree === 'function') return window.__generateAccessibilityTree(f, d, mc, ri);
         return { error: 'Content script not loaded. Try again.', pageContent: '', viewport: { width: window.innerWidth, height: window.innerHeight } };
-      }, args: [filter, args.depth || 15, args.max_chars || 50000, args.ref_id || null] });
+      }, args: [filter, args.depth || 10, args.max_chars || 15000, args.ref_id || null] });
       const result = results?.[0]?.result;
       if (result?.error) return { content: [{ type: 'text', text: `Error: ${result.error}` }] };
       const vp = result?.viewport;
@@ -673,7 +674,7 @@ async function executeTool(name, args) {
       const results = await chrome.scripting.executeScript({ target: { tabId }, func: (maxChars) => {
         const article = document.querySelector('article') || document.querySelector('[role="main"]') || document.body;
         return (article.innerText || article.textContent || '').slice(0, maxChars);
-      }, args: [args.max_chars || 50000] });
+      }, args: [args.max_chars || 15000] });
       return { content: [{ type: 'text', text: results?.[0]?.result || 'Empty page' }] };
     }
 
