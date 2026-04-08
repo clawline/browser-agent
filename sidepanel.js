@@ -891,7 +891,7 @@ async function* parseSSE(response) {
 // NEVER delete messages — that breaks tool_use/tool_result pairing.
 
 const MAX_TOOL_TEXT = 500;
-const RECENT_KEEP = 4; // Keep last 4 messages fully intact
+const RECENT_KEEP = 20; // Keep last 20 messages fully intact (10 agent turns)
 
 function pruneConversation(messages) {
   if (messages.length <= RECENT_KEEP) return messages;
