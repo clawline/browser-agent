@@ -220,36 +220,11 @@ const TOOLS = [
   { name: 'page_info', description: 'Get current page URL, title, viewport size, DOM stats. Use this to understand what page you are on.', input_schema: { type: 'object', properties: {} } },
 ];
 
-const SYSTEM_PROMPT = `You are Claude, an AI assistant controlling the user's Chrome browser via a side panel.
-
-Available tools: screenshot, click, type, navigate, read_page, scroll, hover, evaluate, wait, zoom, drag, key_combo, page_info.
-
-IMPORTANT — Efficient element interaction workflow:
-1. Use page_info to see what page you're on (URL, title, viewport)
-2. Use read_page to get the accessibility tree with ref_IDs (e.g. [ref_42])
-3. Use ref_id parameter in click/type tools — this is MUCH faster and more accurate than coordinates
-4. Only use screenshot + coordinates as a fallback when ref_id doesn't work
-
-Element interaction best practices:
-- PREFER ref_id over coordinates: click({ref_id: "ref_42"}) auto-scrolls and clicks the element center
-- type({ref_id: "ref_42", text: "hello"}) sets value directly — instant, no character-by-character typing
-- Use clear: true to replace existing text in input fields
-- Use key_combo for shortcuts: key_combo({keys: "ctrl+a"}) to select all, key_combo({keys: "cmd+c"}) to copy
-- Use drag for drag-and-drop operations with start and end coordinates
-- Use read_page with ref_id to inspect a specific element's subtree: read_page({ref_id: "ref_42"})
-
-Navigation:
-- After navigate, the tool automatically waits for page load and reports the final URL
-- After click/type, the tool reports whether the page changed visually
-- If the tool says "(page changed)", use read_page to see the new state instead of taking a screenshot
-- If the tool says "(page unchanged)", no need to verify — proceed to next action
-- Only use screenshot when you need to see visual layout that the accessibility tree can't capture
-
-Guidelines:
-- Always explain what you're doing
-- Use read_page first, screenshot only when visual verification is needed
-- Handle errors gracefully — if ref_id fails, fall back to coordinates
-- For forms: read_page → identify fields by ref_id → type with ref_id → click submit with ref_id`;
+const SYSTEM_PROMPT = `You control the user's Chrome browser. Use read_page to get ref_IDs, then click/type by ref_id. Screenshot only for visual verification.
+- click({ref_id:"ref_42"}) auto-scrolls+clicks center
+- type({ref_id:"ref_42",text:"hello",clear:true}) sets value directly
+- key_combo({keys:"ctrl+a"}) for shortcuts
+- Be concise in explanations.`;
 
 // ── UI Helpers ──
 
@@ -879,25 +854,53 @@ async function* parseSSE(response) {
   }
 }
 
-// ── Conversation Pruning ──
-// Remove old screenshots from conversation to save tokens.
-// Keep text and tool_result text, but strip base64 images older than last N turns.
-const MAX_IMAGE_HISTORY = 4; // Keep images from last 4 messages only
+// ── Conversation Pruning (aggressive token optimization) ──
+// Strategy:
+// 1. Keep first user message (task intent) + last N turns intact
+// 2. Drop middle messages if conversation gets too long
+// 3. Strip base64 images from older messages
+// 4. Truncate long tool results (read_page trees) from older turns
+
+const MAX_CONTEXT_PAIRS = 8;       // Keep last 8 assistant+user pairs
+const MAX_TOOL_TEXT_CHARS = 200;   // Truncate old tool results to this
+const RECENT_KEEP = 6;             // Keep last 6 messages fully intact
 
 function pruneConversation(messages) {
-  if (messages.length <= MAX_IMAGE_HISTORY) return messages;
-  return messages.map((msg, i) => {
-    if (i >= messages.length - MAX_IMAGE_HISTORY) return msg; // Keep recent
+  if (messages.length <= RECENT_KEEP) return messages;
+
+  let pruned = messages;
+
+  // Step 1: if too many messages, drop middle ones
+  const maxMsgs = MAX_CONTEXT_PAIRS * 2 + 2;
+  if (pruned.length > maxMsgs) {
+    const keep = MAX_CONTEXT_PAIRS * 2;
+    pruned = [
+      pruned[0],
+      pruned[1],
+      { role: 'user', content: `[${pruned.length - 2 - keep} earlier messages trimmed]` },
+      ...pruned.slice(-keep),
+    ];
+  }
+
+  // Step 2: strip images + truncate text in non-recent messages
+  return pruned.map((msg, i) => {
+    if (i >= pruned.length - RECENT_KEEP) return msg;
+    if (typeof msg.content === 'string') return msg;
     if (!Array.isArray(msg.content)) return msg;
-    // Strip base64 images from old messages, replace with text placeholder
-    const pruned = msg.content.map(block => {
-      if (block.type === 'image') return { type: 'text', text: '[screenshot — removed to save tokens]' };
+    return { ...msg, content: msg.content.map(block => {
+      if (block.type === 'image') return { type: 'text', text: '[screenshot]' };
+      if (block.type === 'text' && block.text?.length > MAX_TOOL_TEXT_CHARS) {
+        return { type: 'text', text: block.text.slice(0, MAX_TOOL_TEXT_CHARS) + '...[trimmed]' };
+      }
       if (block.type === 'tool_result' && Array.isArray(block.content)) {
-        return { ...block, content: block.content.map(b => b.type === 'image' ? { type: 'text', text: '[screenshot]' } : b) };
+        return { ...block, content: block.content.map(b => {
+          if (b.type === 'image') return { type: 'text', text: '[screenshot]' };
+          if (b.type === 'text' && b.text?.length > MAX_TOOL_TEXT_CHARS) return { type: 'text', text: b.text.slice(0, MAX_TOOL_TEXT_CHARS) + '...[trimmed]' };
+          return b;
+        }) };
       }
       return block;
-    });
-    return { ...msg, content: pruned };
+    }) };
   });
 }
 
