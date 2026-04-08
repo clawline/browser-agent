@@ -393,10 +393,13 @@ function addScreenshot(base64, mediaType) {
   img.className = 'screenshot';
   img.onclick = () => img.classList.toggle('expanded');
   container.appendChild(img);
-  // Append screenshot to active tool group if exists
+  // Put screenshot in active tool group if exists
   const group = messagesEl.querySelector('.tool-group:last-child');
   if (group) {
-    group.querySelector('.tool-group-body').appendChild(container);
+    const body = group.querySelector('.tool-group-body');
+    const details = group.querySelector('.tool-group-details');
+    body.insertBefore(container, details);
+    scrollBottom();
     return container;
   }
   return addMsg('tool', container, 'tool');
@@ -406,15 +409,13 @@ function addScreenshot(base64, mediaType) {
 let activeToolGroup = null;
 
 function ensureToolGroup() {
-  // Reuse active group if last child is a tool group
   const last = messagesEl.lastElementChild;
   if (last?.classList.contains('tool-group')) {
     activeToolGroup = last;
     return activeToolGroup;
   }
-  // Create new group
   const group = document.createElement('div');
-  group.className = 'msg tool-group';
+  group.className = 'tool-group';
   const header = document.createElement('div');
   header.className = 'tool-group-header';
   header.innerHTML = '<span class="tool-group-arrow">▶</span> <span class="tool-group-label">Tools</span>';
@@ -424,6 +425,9 @@ function ensureToolGroup() {
   };
   const body = document.createElement('div');
   body.className = 'tool-group-body';
+  const details = document.createElement('div');
+  details.className = 'tool-group-details';
+  body.appendChild(details);
   group.appendChild(header);
   group.appendChild(body);
   messagesEl.appendChild(group);
@@ -435,14 +439,14 @@ function ensureToolGroup() {
 function addToolCall(name, args) {
   const group = ensureToolGroup();
   const body = group.querySelector('.tool-group-body');
+  const details = group.querySelector('.tool-group-details');
   const tag = document.createElement('span');
   tag.className = 'tool-tag';
   tag.textContent = `🔧 ${name}`;
   if (args && Object.keys(args).length > 0) {
     tag.title = JSON.stringify(args, null, 2);
   }
-  body.appendChild(tag);
-  // Update header label with tool names
+  body.insertBefore(tag, details);
   const tags = body.querySelectorAll('.tool-tag');
   const names = [...tags].map(t => t.textContent.replace('🔧 ', '')).join(' → ');
   group.querySelector('.tool-group-label').textContent = names;
@@ -451,11 +455,11 @@ function addToolCall(name, args) {
 
 function addToolResult(text) {
   const group = activeToolGroup || ensureToolGroup();
-  const body = group.querySelector('.tool-group-body');
+  const details = group.querySelector('.tool-group-details');
   const div = document.createElement('div');
   div.className = 'tool-result-text';
   div.textContent = text;
-  body.appendChild(div);
+  details.appendChild(div);
 }
 
 function endToolGroup() {
@@ -497,9 +501,9 @@ function calcScreenshotDimensions(w, h) {
 let lastViewport = { vw: 0, vh: 0, sw: 0, sh: 0 };
 
 async function captureScreenshotOptimized(tabId) {
-  await chrome.debugger.attach({ tabId }, '1.3');
-  try {
-    const layoutMetrics = await chrome.debugger.sendCommand({ tabId }, 'Page.getLayoutMetrics');
+  await ensureDebugger(tabId);
+  {
+    const layoutMetrics = await cdp('Page.getLayoutMetrics');
     const vw = layoutMetrics.cssVisualViewport?.clientWidth || layoutMetrics.visualViewport?.clientWidth || 1280;
     const vh = layoutMetrics.cssVisualViewport?.clientHeight || layoutMetrics.visualViewport?.clientHeight || 720;
     const [sw, sh] = calcScreenshotDimensions(vw, vh);
@@ -509,7 +513,7 @@ async function captureScreenshotOptimized(tabId) {
     let quality = SCREENSHOT_INITIAL_QUALITY;
     let result;
     while (quality >= SCREENSHOT_MIN_QUALITY) {
-      result = await chrome.debugger.sendCommand({ tabId }, 'Page.captureScreenshot', {
+      result = await cdp('Page.captureScreenshot', {
         format: 'jpeg',
         quality,
         captureBeyondViewport: false,
@@ -526,8 +530,6 @@ async function captureScreenshotOptimized(tabId) {
       mediaType: 'image/jpeg',
       dimensions: `${sw}x${sh} (q${quality}, ${Math.round(result.data.length/1024)}KB)`,
     };
-  } finally {
-    try { await chrome.debugger.detach({ tabId }); } catch {}
   }
 }
 
@@ -541,75 +543,30 @@ function scaleCoordinate(x, y) {
   return [x, y];
 }
 
-// ── Screencast: lightweight page-change detection ──
-// Low-res video feed (100x100, q10) to detect page changes without full screenshots.
-// After actions (click/type/navigate), we start screencast briefly, compare frames,
-// and report whether the page changed — saving Claude from taking redundant screenshots.
+// ── Persistent Debugger Connection ──
+// Attach once per agent loop, detach when done. Avoids "debugging this browser" flicker.
 
-let screencastState = {
-  tabId: null,
-  lastFrameHash: null,
-  changed: false,
-  frameCount: 0,
-};
+let debuggerTabId = null;
 
-function simpleHash(base64Str) {
-  // Fast hash of first 500 chars — enough to detect visual changes
-  let h = 0;
-  const sample = base64Str.slice(0, 500);
-  for (let i = 0; i < sample.length; i++) {
-    h = ((h << 5) - h + sample.charCodeAt(i)) | 0;
+async function ensureDebugger(tabId) {
+  if (debuggerTabId === tabId) return;
+  if (debuggerTabId) {
+    try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {}
   }
-  return h;
+  await chrome.debugger.attach({ tabId }, '1.3');
+  debuggerTabId = tabId;
 }
 
-async function startScreencast(tabId) {
-  screencastState = { tabId, lastFrameHash: null, changed: false, frameCount: 0 };
-  try {
-    await chrome.debugger.attach({ tabId }, '1.3');
-    // Listen for screencast frames
-    chrome.debugger.onEvent.addListener(screencastEventHandler);
-    await chrome.debugger.sendCommand({ tabId }, 'Page.startScreencast', {
-      format: 'jpeg',
-      quality: 10,
-      maxWidth: 100,
-      maxHeight: 100,
-      everyNthFrame: 10,
-    });
-  } catch {}
-}
-
-async function stopScreencast() {
-  const { tabId } = screencastState;
-  if (!tabId) return;
-  try {
-    chrome.debugger.onEvent.removeListener(screencastEventHandler);
-    await chrome.debugger.sendCommand({ tabId }, 'Page.stopScreencast');
-    await chrome.debugger.detach({ tabId });
-  } catch {}
-  const result = { changed: screencastState.changed, frames: screencastState.frameCount };
-  screencastState = { tabId: null, lastFrameHash: null, changed: false, frameCount: 0 };
-  return result;
-}
-
-function screencastEventHandler(source, method, params) {
-  if (method !== 'Page.screencastFrame') return;
-  if (source.tabId !== screencastState.tabId) return;
-  // Acknowledge frame (required by protocol)
-  chrome.debugger.sendCommand({ tabId: source.tabId }, 'Page.screencastFrameAck', { sessionId: params.sessionId });
-  screencastState.frameCount++;
-  const hash = simpleHash(params.data);
-  if (screencastState.lastFrameHash !== null && hash !== screencastState.lastFrameHash) {
-    screencastState.changed = true;
+async function releaseDebugger() {
+  if (debuggerTabId) {
+    try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {}
+    debuggerTabId = null;
   }
-  screencastState.lastFrameHash = hash;
 }
 
-// Monitor page after an action: start screencast, wait, stop, report change
-async function detectPageChange(tabId, waitMs = 1500) {
-  await startScreencast(tabId);
-  await new Promise(r => setTimeout(r, waitMs));
-  return await stopScreencast();
+async function cdp(method, params) {
+  if (!debuggerTabId) throw new Error('Debugger not attached');
+  return chrome.debugger.sendCommand({ tabId: debuggerTabId }, method, params);
 }
 
 // ── Tool Execution ──
@@ -680,29 +637,21 @@ async function executeTool(name, args) {
           const [x, y] = r.coordinates;
           const count = args.action === 'double_click' ? 2 : args.action === 'triple_click' ? 3 : 1;
           const button = args.action === 'right_click' ? 'right' : 'left';
-          await chrome.debugger.attach({ tabId }, '1.3');
-          try {
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
-          } finally { try { await chrome.debugger.detach({ tabId }); } catch {} }
+          await ensureDebugger(tabId);
+          await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
+          await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
         }
         // Detect page change after click
-        const change = await detectPageChange(tabId, 1000);
-        const changeNote = change?.changed ? ' (page changed — consider using read_page to see new state)' : ' (page unchanged)';
-        return { content: [{ type: 'text', text: `Clicked ${args.ref_id} <${r?.tag}> "${r?.text}" at [${r?.coordinates}]${changeNote}` }] };
+        return { content: [{ type: 'text', text: `Clicked ${args.ref_id} <${r?.tag}> "${r?.text}" at [${r?.coordinates}]` }] };
       }
       // Coordinate-based click (fallback)
       const [x, y] = scaleCoordinate(...args.coordinate);
       const count = args.action === 'double_click' ? 2 : args.action === 'triple_click' ? 3 : 1;
       const button = args.action === 'right_click' ? 'right' : 'left';
-      await chrome.debugger.attach({ tabId }, '1.3');
-      try {
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
-      } finally { try { await chrome.debugger.detach({ tabId }); } catch {} }
-      const clickChange = await detectPageChange(tabId, 1000);
-      const clickNote = clickChange?.changed ? ' (page changed)' : '';
-      return { content: [{ type: 'text', text: `Clicked [${x},${y}] (${args.action || 'left_click'})${clickNote}` }] };
+      await ensureDebugger(tabId);
+      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
+      return { content: [{ type: 'text', text: `Clicked [${x},${y}] (${args.action || 'left_click'})` }] };
     }
     case 'type': {
       if (args.ref_id && (args.text || args.key)) {
@@ -737,37 +686,35 @@ async function executeTool(name, args) {
         }, args: [args.ref_id, args.text || null, args.key || null, args.clear || false] });
         const r = results?.[0]?.result;
         if (r?.error) return { content: [{ type: 'text', text: r.error }] };
-        const typeChange = await detectPageChange(tabId, 800);
-        const typeNote = typeChange?.changed ? ' (page reacted)' : '';
-        return { content: [{ type: 'text', text: `Typed "${args.text || args.key}" into ${args.ref_id} <${r?.tag}> (value: "${r?.value}")${typeNote}` }] };
+        return { content: [{ type: 'text', text: `Typed "${args.text || args.key}" into ${args.ref_id} <${r?.tag}> (value: "${r?.value}")` }] };
       }
       // Coordinate-based typing (fallback via CDP + insertText)
-      await chrome.debugger.attach({ tabId }, '1.3');
-      try {
+      await ensureDebugger(tabId);
+      {
         if (args.coordinate) {
           const [x, y] = scaleCoordinate(...args.coordinate);
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+          await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+          await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
           await new Promise(r => setTimeout(r, 100));
         }
         if (args.clear) {
           // Select all + delete to clear field
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2 });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2 });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Backspace', windowsVirtualKeyCode: 8 });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', windowsVirtualKeyCode: 8 });
+          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2 });
+          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2 });
+          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Backspace', windowsVirtualKeyCode: 8 });
+          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', windowsVirtualKeyCode: 8 });
         }
         if (args.text) {
           // Use Input.insertText for fast text entry (handles CJK, paste-like speed)
-          await chrome.debugger.sendCommand({ tabId }, 'Input.insertText', { text: args.text });
+          await cdp('Input.insertText', { text: args.text });
         }
         if (args.key) {
           const map = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, Space: 32, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
           const code = map[args.key] || 0;
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'keyDown', key: args.key, windowsVirtualKeyCode: code });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'keyUp', key: args.key, windowsVirtualKeyCode: code });
+          await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: args.key, windowsVirtualKeyCode: code });
+          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: args.key, windowsVirtualKeyCode: code });
         }
-      } finally { try { await chrome.debugger.detach({ tabId }); } catch {} }
+      }
       return { content: [{ type: 'text', text: `Typed: ${args.text || args.key || ''}` }] };
     }
     case 'scroll': {
@@ -777,10 +724,8 @@ async function executeTool(name, args) {
         const [x, y] = scaleCoordinate(...args.coordinate);
         const dx = args.direction === 'left' ? -amount : args.direction === 'right' ? amount : 0;
         const dy = args.direction === 'up' ? -amount : args.direction === 'down' ? amount : 0;
-        await chrome.debugger.attach({ tabId }, '1.3');
-        try {
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: dx, deltaY: dy });
-        } finally { try { await chrome.debugger.detach({ tabId }); } catch {} }
+        await ensureDebugger(tabId);
+                  await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: dx, deltaY: dy });
       } else {
         // Global scroll via scripting
         await chrome.scripting.executeScript({ target: { tabId }, func: (dir, amt) => {
@@ -793,9 +738,9 @@ async function executeTool(name, args) {
     }
     case 'hover': {
       const [x, y] = scaleCoordinate(...args.coordinate);
-      await chrome.debugger.attach({ tabId }, '1.3');
-      try { await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); }
-      finally { try { await chrome.debugger.detach({ tabId }); } catch {} }
+      await ensureDebugger(tabId);
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      
       return { content: [{ type: 'text', text: `Hovered [${x},${y}]` }] };
     }
     case 'read_page': {
@@ -833,25 +778,22 @@ async function executeTool(name, args) {
     case 'drag': {
       const [sx, sy] = scaleCoordinate(...args.start_coordinate);
       const [ex, ey] = scaleCoordinate(...args.coordinate);
-      await chrome.debugger.attach({ tabId }, '1.3');
-      try {
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none' });
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
-        // Intermediate steps for smooth drag
-        const steps = 5;
-        for (let i = 1; i <= steps; i++) {
-          const mx = sx + (ex - sx) * i / steps;
-          const my = sy + (ey - sy) * i / steps;
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(mx), y: Math.round(my), button: 'left', buttons: 1 });
-        }
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: ex, y: ey, button: 'left', clickCount: 1 });
-      } finally { try { await chrome.debugger.detach({ tabId }); } catch {} }
+      await ensureDebugger(tabId);
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none' });
+      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
+      const steps = 5;
+      for (let i = 1; i <= steps; i++) {
+        const mx = sx + (ex - sx) * i / steps;
+        const my = sy + (ey - sy) * i / steps;
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(mx), y: Math.round(my), button: 'left', buttons: 1 });
+      }
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ex, y: ey, button: 'left', clickCount: 1 });
       return { content: [{ type: 'text', text: `Dragged from [${sx},${sy}] to [${ex},${ey}]` }] };
     }
     case 'key_combo': {
       const keys = args.keys.toLowerCase().split('+').map(k => k.trim());
-      await chrome.debugger.attach({ tabId }, '1.3');
-      try {
+      await ensureDebugger(tabId);
+      {
         const modMap = { ctrl: 'Control', cmd: 'Meta', meta: 'Meta', alt: 'Alt', shift: 'Shift', command: 'Meta' };
         const codeMap = { a: 65, c: 67, v: 86, x: 88, z: 90, s: 83, f: 70, l: 76, t: 84, w: 87, r: 82, enter: 13, tab: 9, escape: 27, backspace: 8, delete: 46, space: 32, arrowup: 38, arrowdown: 40, arrowleft: 37, arrowright: 39 };
         const modifiers = keys.filter(k => modMap[k]);
@@ -865,19 +807,19 @@ async function executeTool(name, args) {
         }
         // Press modifiers
         for (const m of modifiers) {
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'rawKeyDown', key: modMap[m], modifiers: modBits });
+          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: modMap[m], modifiers: modBits });
         }
         // Press main key
         if (mainKey) {
           const vk = codeMap[mainKey] || mainKey.toUpperCase().charCodeAt(0);
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'rawKeyDown', key: mainKey.length === 1 ? mainKey : mainKey.charAt(0).toUpperCase() + mainKey.slice(1), windowsVirtualKeyCode: vk, modifiers: modBits });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'keyUp', key: mainKey.length === 1 ? mainKey : mainKey.charAt(0).toUpperCase() + mainKey.slice(1), windowsVirtualKeyCode: vk, modifiers: modBits });
+          await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: mainKey.length === 1 ? mainKey : mainKey.charAt(0).toUpperCase() + mainKey.slice(1), windowsVirtualKeyCode: vk, modifiers: modBits });
+          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: mainKey.length === 1 ? mainKey : mainKey.charAt(0).toUpperCase() + mainKey.slice(1), windowsVirtualKeyCode: vk, modifiers: modBits });
         }
         // Release modifiers
         for (const m of modifiers.reverse()) {
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', { type: 'keyUp', key: modMap[m] });
+          await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: modMap[m] });
         }
-      } finally { try { await chrome.debugger.detach({ tabId }); } catch {} }
+      }
       return { content: [{ type: 'text', text: `Pressed: ${args.keys}` }] };
     }
     case 'page_info': {
@@ -1081,6 +1023,7 @@ async function runAgentLoop() {
   } catch (err) {
     if (err.name !== 'AbortError') addMsg('system', `Error: ${err.message}`);
   } finally {
+    await releaseDebugger();
     setRunning(false);
     setStatus('');
     inputEl.focus();
