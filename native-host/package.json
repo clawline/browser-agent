@@ -1,0 +1,7 @@
+{
+  "name": "clawline-native-host",
+  "version": "1.0.0",
+  "description": "Clawline Browser Agent — Native Messaging Host with HTTP Hook Server",
+  "main": "index.js",
+  "type": "module"
+}

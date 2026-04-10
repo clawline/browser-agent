@@ -33,7 +33,8 @@
     "activeTab",
     "scripting",
     "debugger",
-    "tabs"
+    "tabs",
+    "nativeMessaging"
   ],
   "host_permissions": ["<all_urls>"],
   "icons": {

@@ -8,27 +8,92 @@
 
 const API_URL = 'http://127.0.0.1:4819';
 const MAX_TOKENS = 10000;
+
+// ── Hook: connect to service worker immediately ──
+// (Placed early so it runs even if later code has errors)
+let swPort = null;
+let activeHookTaskId = null;
+let currentWindowId = null; // This sidepanel's window — used by getTargetTab()
+
+(function initHookConnection() {
+  try {
+    swPort = chrome.runtime.connect({ name: 'sidepanel' });
+    console.log('[clawline-hook] port connected');
+
+    (async () => {
+      let windowId = null;
+      try { windowId = (await chrome.windows.getCurrent()).id; } catch {}
+      if (!windowId) try { windowId = (await chrome.windows.getLastFocused()).id; } catch {}
+      if (!windowId) try { const t = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); if (t[0]) windowId = t[0].windowId; } catch {}
+      if (!windowId) windowId = 'sp_' + Date.now();
+      currentWindowId = windowId;
+      console.log('[clawline-hook] register windowId:', windowId);
+      swPort.postMessage({ type: 'register', windowId });
+    })();
+
+    swPort.onMessage.addListener((msg) => {
+      // handleHookMessage is defined later in the file
+      if (typeof handleHookMessage === 'function') handleHookMessage(msg);
+    });
+    swPort.onDisconnect.addListener(() => {
+      console.log('[clawline-hook] port disconnected, reconnecting...');
+      swPort = null;
+      setTimeout(initHookConnection, 1000);
+    });
+  } catch (e) {
+    console.error('[clawline-hook] connect failed:', e);
+    swPort = null;
+  }
+})();
 const FAST_MODEL = 'claude-haiku-4-5-20251001';
 const THINKING_BUDGET = 10000;
 
-// ── Conversation Storage ──
+// ── Conversation Storage (IndexedDB — no size limit, survives extension reloads) ──
+
+const IDB_NAME = 'clawline-agent';
+const IDB_VERSION = 1;
+const IDB_STORE = 'kv';
+
+let _dbInstance = null;
+function getDB() {
+  if (_dbInstance) return Promise.resolve(_dbInstance);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = () => { _dbInstance = req.result; resolve(_dbInstance); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGet(key) {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, value) {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 let allConversations = {};
 let activeConvId = null;
 
-async function loadConversations() {
-  return new Promise(resolve => {
-    chrome.storage.local.get(['conversations', 'activeConvId'], (data) => {
-      allConversations = data.conversations || {};
-      activeConvId = data.activeConvId || null;
-      resolve();
-    });
-  });
-}
-
-function saveConversations() {
+function stripForStorage(convs) {
   const stripped = {};
-  for (const [id, conv] of Object.entries(allConversations)) {
+  for (const [id, conv] of Object.entries(convs)) {
     stripped[id] = {
       ...conv,
       messages: conv.messages.map(msg => {
@@ -43,7 +108,39 @@ function saveConversations() {
       }),
     };
   }
-  chrome.storage.local.set({ conversations: stripped, activeConvId });
+  return stripped;
+}
+
+async function loadConversations() {
+  try {
+    let data = await idbGet('conversations');
+    let activeId = await idbGet('activeConvId');
+
+    // One-time migration from chrome.storage.local
+    if (!data) {
+      const old = await new Promise(r => chrome.storage.local.get(['conversations', 'activeConvId'], r));
+      if (old?.conversations && Object.keys(old.conversations).length > 0) {
+        data = old.conversations;
+        activeId = old.activeConvId;
+        await idbSet('conversations', data);
+        await idbSet('activeConvId', activeId);
+        chrome.storage.local.remove(['conversations', 'activeConvId']);
+      }
+    }
+
+    allConversations = data || {};
+    activeConvId = activeId || null;
+  } catch (e) {
+    console.warn('Failed to load conversations:', e);
+    allConversations = {};
+    activeConvId = null;
+  }
+}
+
+function saveConversations() {
+  const stripped = stripForStorage(allConversations);
+  idbSet('conversations', stripped).catch(e => console.warn('Save conversations failed:', e));
+  idbSet('activeConvId', activeConvId).catch(e => console.warn('Save activeConvId failed:', e));
 }
 
 function createConversation() {
@@ -84,9 +181,12 @@ function switchConversation(id) {
     allConversations[activeConvId].updatedAt = Date.now();
   }
   activeConvId = id;
+  activeToolGroup = null; stepCount = 0; // Reset tool group state
   const conv = allConversations[id];
   conversation = conv?.messages || [];
   messagesEl.innerHTML = conv?.displayMessages || '';
+  // Finalize any uncollapsed groups restored from storage
+  messagesEl.querySelectorAll('.tool-group:not(.collapsed)').forEach(g => finalizeToolGroup(g));
   scrollBottom();
   saveConversations();
   renderConversationList();
@@ -206,12 +306,40 @@ const TOOLS = [
   { name: 'javascript_tool', description: 'Execute JavaScript in the page context. Returns result of last expression. Do NOT use "return" — just write the expression.', input_schema: { type: 'object', properties: { action: { type: 'string', description: 'Must be "javascript_exec"' }, text: { type: 'string', description: 'JavaScript code to execute' } }, required: ['action', 'text'] } },
   { name: 'file_upload', description: 'Upload files to a file input element. Do NOT click file inputs — use this tool with the ref_ID instead. Paths must be absolute.', input_schema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths to upload' }, ref: { type: 'string', description: 'ref_ID of the file input element' } }, required: ['paths', 'ref'] } },
   { name: 'update_plan', description: 'Present a plan to the user before proceeding with complex tasks.', input_schema: { type: 'object', properties: { domains: { type: 'array', items: { type: 'string' }, description: 'Domains to visit' }, approach: { type: 'array', items: { type: 'string' }, description: 'Ordered steps (3-7)' } }, required: ['domains', 'approach'] } },
+  { name: 'turn_answer_start', description: 'Call this immediately before your text response to the user for this turn. Required every turn - whether or not you made tool calls. After calling, write your response. No more tools after this.', input_schema: { type: 'object', properties: {}, required: [] }, cache_control: { type: 'ephemeral' } },
 ];
 
 // ── System Prompt ──
 
 const SYSTEM_PROMPT = [
-  { type: 'text', text: `You are a web automation assistant with browser tools. Your priority is to complete the user's request efficiently. Be persistent — work autonomously until the task is complete.
+  { type: 'text', text: `You are a web automation assistant running as a Chrome browser extension. You can ONLY interact with web pages through the browser tools provided below. You are NOT a terminal, shell, or OS-level agent.
+
+<capabilities>
+You CAN:
+- View and interact with web pages (screenshot, click, type, scroll, navigate)
+- Read page content (DOM tree, text extraction, accessibility tree)
+- Fill forms, select options, upload files
+- Execute JavaScript within page context
+- Open/manage browser tabs
+- Read browser console logs and network requests
+
+You CANNOT:
+- Run shell commands, terminal operations, or OS-level tasks
+- Access the filesystem, install software, or modify system settings
+- Run Python, Node.js, or any server-side code
+- Access databases, APIs, or services outside the browser
+- Interact with desktop applications
+
+If the user asks for something outside browser capabilities, clearly explain that you are a browser automation tool and suggest they use a different tool for OS-level operations.
+</capabilities>
+
+<user_privacy>
+- Never enter sensitive financial or identity information (bank accounts, SSN, passwords, credit cards)
+- Never create accounts on the user's behalf
+- Never authorize password-based access — direct the user to input passwords themselves
+- Choose privacy-preserving options for cookie banners and permission popups
+- Never bypass CAPTCHA or bot detection systems
+</user_privacy>
 
 <tool_usage_requirements>
 CRITICAL RULES for efficient browser automation:
@@ -220,7 +348,7 @@ CRITICAL RULES for efficient browser automation:
 
 2. PREFER ref-based actions over coordinate-based actions:
    - Use computer left_click with "ref" parameter, or form_input with "ref" parameter
-   - Only fall back to coordinate-based clicking when ref actions fail or for actions that don't support refs (e.g. dragging)
+   - Only fall back to coordinate-based clicking when ref actions fail
 
 3. NEVER repeatedly scroll to read long pages. Instead use get_page_text to read article content, or read_page with filter="interactive" to get only interactive elements.
 
@@ -230,7 +358,7 @@ CRITICAL RULES for efficient browser automation:
 
 6. After completing tool calls, provide a brief summary to the user. Don't repeat information already visible.
 
-7. Don't keep taking screenshots to verify simple actions. Trust the tool results — they confirm success/failure.
+7. Don't keep taking screenshots to verify simple actions. Trust the tool results.
 
 8. When a task is done, stop. Don't add unnecessary verification steps.
 </tool_usage_requirements>
@@ -238,10 +366,10 @@ CRITICAL RULES for efficient browser automation:
 <efficiency_rules>
 - Take action immediately. Don't explain what you're going to do before doing it.
 - Combine related observations into one response, not multiple steps.
-- If read_page shows what you need, act on it directly. Don't take a screenshot to "verify" what you already know.
-- When testing functionality, organize tests logically and report results concisely.
-- If you've already seen the page state via read_page, don't screenshot again unless visual verification is truly needed.
-- Keep track of what you've already tested — never repeat the same test.
+- If read_page shows what you need, act on it directly. Don't screenshot to "verify" what you already know.
+- MINIMIZE wait calls. Only use wait when explicitly waiting for async operations (page load, AI response). After clicking/filling, take action immediately — do NOT wait first.
+- Never do wait→screenshot→wait→screenshot loops.
+- After clicking/typing, trust the tool result. Only screenshot if you need to see VISUAL changes.
 </efficiency_rules>
 
 <behavior_instructions>
@@ -255,13 +383,25 @@ The current date is ${new Date().toLocaleDateString()}.
 1. See page structure: read_page (filter="interactive" first, "all" only if needed)
 2. Find specific elements: find("search button") → get ref_IDs
 3. Click elements: computer left_click with ref="ref_1" (preferred) or coordinate=[x,y]
-4. Fill forms: form_input with ref="ref_1" and value="text" (preferred over computer type)
+4. Fill forms: form_input with ref="ref_1" and value="text"
 5. Navigate: navigate with url, or "back"/"forward"
 6. Read content: get_page_text for articles, read_page for structure
 7. Debug: read_console_messages, read_network_requests, javascript_tool
 8. Screenshot: only when visual layout matters and read_page can't tell you what you need
 </tool_workflows>` },
   { type: 'text', text: `Platform: ${navigator.platform.includes('Mac') ? 'Mac — use "cmd" as modifier key (cmd+a, cmd+c, cmd+v)' : 'Windows/Linux — use "ctrl" as modifier key (ctrl+a, ctrl+c, ctrl+v)'}` },
+  { type: 'text', text: `<turn_answer_start_instructions>
+Before outputting any text response to the user this turn, call turn_answer_start first.
+
+WITH TOOL CALLS: After completing all tool calls, call turn_answer_start, then write your response.
+WITHOUT TOOL CALLS: Call turn_answer_start immediately, then write your response.
+
+RULES:
+- Call exactly once per turn
+- Call immediately before your text response
+- NEVER call during intermediate thoughts, reasoning, or while planning to use more tools
+- No more tools after calling this
+</turn_answer_start_instructions>`, cache_control: { type: 'ephemeral' } },
 ];
 
 // ── UI Helpers ──
@@ -353,7 +493,10 @@ function renderMarkdown(text) {
     .replace(/^---$/gm, '<hr>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+      const safe = /^https?:\/\//.test(url) ? url : '#';
+      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    })
     .replace(/\n\n/g, '</p><p>')
     .replace(/\n/g, '<br>');
 
@@ -412,6 +555,17 @@ function addScreenshot(base64, mediaType) {
 let activeToolGroup = null;
 let stepCount = 0;
 
+// Delegated click handler — works for both live and restored groups
+messagesEl.addEventListener('click', (e) => {
+  const header = e.target.closest('.tool-group-header');
+  if (!header) return;
+  const group = header.closest('.tool-group');
+  if (!group) return;
+  group.classList.toggle('collapsed');
+  const arrow = group.querySelector('.tool-group-arrow');
+  if (arrow) arrow.textContent = group.classList.contains('collapsed') ? '\u203A' : '\u2304';
+});
+
 function ensureToolGroup() {
   const last = messagesEl.lastElementChild;
   if (last?.classList.contains('tool-group')) { activeToolGroup = last; return activeToolGroup; }
@@ -420,8 +574,7 @@ function ensureToolGroup() {
   stepCount = 0;
   const header = document.createElement('div');
   header.className = 'tool-group-header';
-  header.innerHTML = '<span class="tool-group-count">0 steps</span> <span class="tool-group-arrow">›</span>';
-  header.onclick = () => { group.classList.toggle('collapsed'); header.querySelector('.tool-group-arrow').textContent = group.classList.contains('collapsed') ? '›' : '⌄'; };
+  header.innerHTML = '<span class="tool-group-count">0 steps</span> <span class="tool-group-arrow">\u203A</span>';
   const body = document.createElement('div'); body.className = 'tool-group-body';
   group.appendChild(header); group.appendChild(body);
   messagesEl.appendChild(group); activeToolGroup = group; scrollBottom(); return group;
@@ -449,25 +602,90 @@ function addToolCall(name, args) {
 }
 
 function addToolResult(text) {
-  if (!activeToolGroup) return;
+  if (!activeToolGroup || !text) return;
   const body = activeToolGroup.querySelector('.tool-group-body');
   const lastStep = body?.querySelector('.tool-step:last-child');
-  if (lastStep && text.length <= 100) {
+  if (!lastStep) return;
+
+  if (text.length <= 200) {
     // Short result: show inline on the step row
-    const detail = document.createElement('span'); detail.className = 'tool-step-detail'; detail.textContent = text;
+    const detail = document.createElement('span');
+    detail.className = 'tool-step-detail';
+    detail.textContent = text;
+    lastStep.appendChild(detail);
+  } else {
+    // Long result: show in collapsible block below the step
+    const detail = document.createElement('div');
+    detail.className = 'tool-step-detail-block collapsed';
+    const preview = text.slice(0, 150) + '...';
+    detail.textContent = preview;
+    detail.title = 'Click to expand';
+    detail.onclick = (e) => {
+      e.stopPropagation();
+      const isCollapsed = detail.classList.toggle('collapsed');
+      detail.textContent = isCollapsed ? preview : text;
+    };
     lastStep.appendChild(detail);
   }
-  // Long results are silently consumed (Claude already has them via tool_result)
+  scrollBottom();
 }
 
 function endToolGroup() {
-  // Auto-collapse when tool group is done
-  if (activeToolGroup) {
-    activeToolGroup.classList.add('collapsed');
-    const arrow = activeToolGroup.querySelector('.tool-group-arrow');
-    if (arrow) arrow.textContent = '›';
-  }
+  // Only reset reference — don't collapse (latest group stays expanded)
   activeToolGroup = null; stepCount = 0;
+}
+
+// Extract last text step from a group → standalone AI message, then collapse group
+function finalizeToolGroup(group) {
+  if (!group) return;
+  const body = group.querySelector('.tool-group-body');
+  if (!body) return;
+  const textSteps = body.querySelectorAll('.tool-step-text');
+  const lastText = textSteps.length > 0 ? textSteps[textSteps.length - 1] : null;
+  if (lastText) {
+    const content = lastText.querySelector('.tool-step-text-content');
+    if (content?.innerHTML?.trim()) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'msg ai';
+      msgDiv.innerHTML = content.innerHTML;
+      lastText.remove();
+      // Update step count
+      const remaining = body.querySelectorAll('.tool-step').length;
+      const countEl = group.querySelector('.tool-group-count');
+      if (countEl) countEl.textContent = `${remaining} steps`;
+      if (remaining === 0) { group.replaceWith(msgDiv); return; }
+      // Collapse group and insert message after it
+      group.classList.add('collapsed');
+      const arrow = group.querySelector('.tool-group-arrow');
+      if (arrow) arrow.textContent = '\u203A';
+      group.after(msgDiv);
+    }
+  }
+  // Collapse even if no text to extract
+  if (!group.classList.contains('collapsed')) {
+    group.classList.add('collapsed');
+    const arrow = group.querySelector('.tool-group-arrow');
+    if (arrow) arrow.textContent = '\u203A';
+  }
+}
+
+function addTextStep() {
+  const group = ensureToolGroup();
+  const body = group.querySelector('.tool-group-body');
+  stepCount++;
+  const row = document.createElement('div');
+  row.className = 'tool-step tool-step-text';
+  const bullet = document.createElement('span');
+  bullet.className = 'tool-step-bullet';
+  bullet.textContent = '\u2022';
+  const content = document.createElement('div');
+  content.className = 'tool-step-text-content';
+  row.appendChild(bullet);
+  row.appendChild(content);
+  body.appendChild(row);
+  group.querySelector('.tool-group-count').textContent = `${stepCount} steps`;
+  scrollBottom();
+  return content;
 }
 
 // ── Screenshot Optimization ──
@@ -499,9 +717,15 @@ let debuggerTabId = null;
 
 async function ensureDebugger(tabId) {
   if (debuggerTabId === tabId) return;
-  if (debuggerTabId) { try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {} }
-  await chrome.debugger.attach({ tabId }, '1.3');
-  debuggerTabId = tabId;
+  if (debuggerTabId) { try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {} debuggerTabId = null; }
+  try {
+    await chrome.debugger.attach({ tabId }, '1.3');
+    debuggerTabId = tabId;
+    window.__clawlineNetworkEnabled = false; // Force re-enable Network on new tab
+  } catch (e) {
+    debuggerTabId = null;
+    throw new Error(`Cannot attach debugger to tab ${tabId}: ${e.message}`);
+  }
 }
 
 async function releaseDebugger() {
@@ -526,6 +750,13 @@ async function getTargetTab() {
     } catch {}
     lockedTabId = null;
   }
+  // Query active tab in THIS sidepanel's window first
+  if (currentWindowId && typeof currentWindowId === 'number') {
+    const tabs = await chrome.tabs.query({ active: true, windowId: currentWindowId });
+    const tab = tabs.find(t => !t.url?.startsWith('chrome-extension://') && !t.url?.startsWith('chrome://'));
+    if (tab) { lockedTabId = tab.id; return tab.id; }
+  }
+  // Fallback: last focused window
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   let tab = tabs.find(t => !t.url?.startsWith('chrome-extension://') && !t.url?.startsWith('chrome://'));
   if (!tab) { const all = await chrome.tabs.query({}); tab = all.find(t => t.url?.startsWith('http')); }
@@ -590,6 +821,7 @@ async function executeTool(name, args) {
           }
           return { content: [{ type: 'text', text: `Clicked ${args.ref} <${r?.tag}> "${r?.text}"` }] };
         }
+        if (!args.coordinate) return { content: [{ type: 'text', text: 'Click requires either ref or coordinate parameter' }] };
         const [x, y] = scaleCoordinate(...args.coordinate);
         const count = action === 'double_click' ? 2 : action === 'triple_click' ? 3 : 1;
         const button = action === 'right_click' ? 'right' : 'left';
@@ -644,17 +876,26 @@ async function executeTool(name, args) {
         return { content: [{ type: 'text', text: `Scrolled ${dir} ${ticks} ticks` }] };
       }
       if (action === 'hover') {
-        const [x, y] = args.ref ? [0, 0] : scaleCoordinate(...args.coordinate);
         if (args.ref) {
           await injectContentScript(tabId);
-          await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
+          const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
             const el = window.__claudeElementMap?.[refId]?.deref();
-            if (el) { el.scrollIntoView({ behavior: 'instant', block: 'center' }); }
+            if (!el) return { error: `Element ${refId} not found` };
+            el.scrollIntoView({ behavior: 'instant', block: 'center' });
+            const rect = el.getBoundingClientRect();
+            return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
           }, args: [args.ref] });
+          const r = results?.[0]?.result;
+          if (r?.error) return { content: [{ type: 'text', text: r.error }] };
+          await ensureDebugger(tabId);
+          await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y });
+          return { content: [{ type: 'text', text: `Hovered ${args.ref}` }] };
         }
+        if (!args.coordinate) return { content: [{ type: 'text', text: 'hover requires ref or coordinate' }] };
+        const [x, y] = scaleCoordinate(...args.coordinate);
         await ensureDebugger(tabId);
         await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-        return { content: [{ type: 'text', text: `Hovered ${args.ref || `[${x},${y}]`}` }] };
+        return { content: [{ type: 'text', text: `Hovered [${x},${y}]` }] };
       }
       if (action === 'left_click_drag') {
         const [sx, sy] = scaleCoordinate(...args.start_coordinate);
@@ -697,12 +938,29 @@ async function executeTool(name, args) {
     case 'read_page': {
       await injectContentScript(tabId);
       const filter = args.filter || 'all';
+      const maxChars = args.max_chars || 15000;
+      // Force minimum 15000 chars to avoid content script "exceeds limit" errors
+      const effectiveMaxChars = Math.max(maxChars, 15000);
       const results = await chrome.scripting.executeScript({ target: { tabId }, func: (f, d, mc, ri) => {
         if (typeof window.__generateAccessibilityTree === 'function') return window.__generateAccessibilityTree(f, d, mc, ri);
         return { error: 'Content script not loaded. Try again.', pageContent: '', viewport: { width: window.innerWidth, height: window.innerHeight } };
-      }, args: [filter, args.depth || 10, args.max_chars || 15000, args.ref_id || null] });
+      }, args: [filter, args.depth || 10, effectiveMaxChars, args.ref_id || null] });
       const result = results?.[0]?.result;
-      if (result?.error) return { content: [{ type: 'text', text: `Error: ${result.error}` }] };
+      if (result?.error) {
+        // If character limit error, retry with larger limit
+        if (result.error.includes('character limit')) {
+          const retry = await chrome.scripting.executeScript({ target: { tabId }, func: (f, d, mc, ri) => {
+            if (typeof window.__generateAccessibilityTree === 'function') return window.__generateAccessibilityTree(f, d, mc, ri);
+            return { error: 'Content script not loaded.', pageContent: '', viewport: { width: window.innerWidth, height: window.innerHeight } };
+          }, args: [filter, args.depth || 5, 50000, args.ref_id || null] });
+          const r2 = retry?.[0]?.result;
+          if (!r2?.error) {
+            const vp2 = r2?.viewport;
+            return { content: [{ type: 'text', text: (vp2 ? `[Viewport: ${vp2.width}x${vp2.height}]\n` : '') + (r2?.pageContent || 'Empty page') }] };
+          }
+        }
+        return { content: [{ type: 'text', text: `Error: ${result.error}` }] };
+      }
       const vp = result?.viewport;
       return { content: [{ type: 'text', text: (vp ? `[Viewport: ${vp.width}x${vp.height}]\n` : '') + (result?.pageContent || 'Empty page') }] };
     }
@@ -829,51 +1087,78 @@ async function executeTool(name, args) {
 
     case 'read_network_requests': {
       await ensureDebugger(tabId);
-      // Inject network tracker if not present
-      await chrome.scripting.executeScript({ target: { tabId }, func: () => {
-        if (window.__clawlineNetReqs) return;
-        window.__clawlineNetReqs = [];
-        const origFetch = window.fetch;
-        window.fetch = async function(...args) {
-          const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
-          const method = args[1]?.method || 'GET';
-          const start = Date.now();
-          try {
-            const res = await origFetch.apply(this, args);
-            window.__clawlineNetReqs.push({ url, method, status: res.status, duration: Date.now() - start, ts: start });
-            if (window.__clawlineNetReqs.length > 500) window.__clawlineNetReqs.shift();
-            return res;
-          } catch (e) {
-            window.__clawlineNetReqs.push({ url, method, status: 0, error: e.message, duration: Date.now() - start, ts: start });
-            throw e;
-          }
-        };
-        const origXHR = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url) {
-          this.__clawlineReq = { url: String(url), method, ts: Date.now() };
-          return origXHR.apply(this, arguments);
-        };
-        const origSend = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.send = function() {
-          const req = this.__clawlineReq;
-          if (req) {
-            this.addEventListener('loadend', () => {
-              window.__clawlineNetReqs.push({ ...req, status: this.status, duration: Date.now() - req.ts });
-              if (window.__clawlineNetReqs.length > 500) window.__clawlineNetReqs.shift();
+      // Use CDP Network domain to capture all requests (including those before injection)
+      if (!window.__clawlineNetworkEnabled) {
+        window.__clawlineNetworkRequests = [];
+        await cdp('Network.enable');
+        chrome.debugger.onEvent.addListener((source, method, params) => {
+          if (source.tabId !== debuggerTabId) return;
+          if (method === 'Network.responseReceived') {
+            const r = params.response;
+            window.__clawlineNetworkRequests.push({
+              url: r.url,
+              method: params.type === 'XHR' || params.type === 'Fetch' ? 'GET' : params.type,
+              status: r.status,
+              mimeType: r.mimeType,
+              ts: Date.now(),
             });
+            if (window.__clawlineNetworkRequests.length > 500) window.__clawlineNetworkRequests.shift();
           }
-          return origSend.apply(this, arguments);
-        };
-      } });
-      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (urlPattern, limit) => {
-        let reqs = window.__clawlineNetReqs || [];
-        if (urlPattern) reqs = reqs.filter(r => r.url.includes(urlPattern));
-        return reqs.slice(-(limit || 100));
-      }, args: [args.urlPattern || null, args.limit || 100] });
-      const reqs = results?.[0]?.result || [];
-      if (args.clear) await chrome.scripting.executeScript({ target: { tabId }, func: () => { window.__clawlineNetReqs = []; } });
-      if (reqs.length === 0) return { content: [{ type: 'text', text: 'No network requests captured.' }] };
-      const lines = reqs.map(r => `${r.method} ${r.status} ${r.url.slice(0, 80)} (${r.duration}ms)`).join('\n');
+          if (method === 'Network.requestWillBeSent') {
+            // Update method for the URL
+            const existing = window.__clawlineNetworkRequests?.find(r => r.url === params.request.url && r.method === params.type);
+            if (existing) existing.method = params.request.method;
+            else {
+              window.__clawlineNetworkRequests.push({
+                url: params.request.url,
+                method: params.request.method,
+                status: 0,
+                ts: Date.now(),
+              });
+              if (window.__clawlineNetworkRequests.length > 500) window.__clawlineNetworkRequests.shift();
+            }
+          }
+        });
+        window.__clawlineNetworkEnabled = true;
+      }
+      // Also try the injected approach as fallback for requests made before CDP was enabled
+      let reqs = window.__clawlineNetworkRequests || [];
+      // Merge with content-script captured requests
+      try {
+        const results = await chrome.scripting.executeScript({ target: { tabId }, func: (urlPattern, limit) => {
+          if (!window.__clawlineNetReqs) {
+            window.__clawlineNetReqs = [];
+            const origFetch = window.fetch;
+            window.fetch = async function(...args) {
+              const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+              const method = args[1]?.method || 'GET';
+              const start = Date.now();
+              try {
+                const res = await origFetch.apply(this, args);
+                window.__clawlineNetReqs.push({ url, method, status: res.status, duration: Date.now() - start, ts: start });
+                if (window.__clawlineNetReqs.length > 500) window.__clawlineNetReqs.shift();
+                return res;
+              } catch (e) {
+                window.__clawlineNetReqs.push({ url, method, status: 0, error: e.message, duration: Date.now() - start, ts: start });
+                throw e;
+              }
+            };
+          }
+          let r = window.__clawlineNetReqs || [];
+          if (urlPattern) r = r.filter(x => x.url.includes(urlPattern));
+          return r.slice(-(limit || 100));
+        }, args: [args.urlPattern || null, args.limit || 100] });
+        const csReqs = results?.[0]?.result || [];
+        // Merge: add CS requests not already in CDP list
+        const cdpUrls = new Set(reqs.map(r => r.url));
+        for (const r of csReqs) { if (!cdpUrls.has(r.url)) reqs.push(r); }
+      } catch {}
+
+      if (args.urlPattern) reqs = reqs.filter(r => r.url.includes(args.urlPattern));
+      reqs = reqs.slice(-(args.limit || 100));
+      if (args.clear) { window.__clawlineNetworkRequests = []; }
+      if (reqs.length === 0) return { content: [{ type: 'text', text: 'No network requests captured. Note: requests made before monitoring started cannot be captured.' }] };
+      const lines = reqs.map(r => `${r.method || '?'} ${r.status} ${r.url?.slice(0, 120)}${r.duration ? ` (${r.duration}ms)` : ''}`).join('\n');
       return { content: [{ type: 'text', text: `${reqs.length} requests:\n${lines}` }] };
     }
 
@@ -884,10 +1169,22 @@ async function executeTool(name, args) {
     }
 
     case 'javascript_tool': {
-      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (code) => {
-        try { return String(eval(code)); } catch (e) { return 'Error: ' + e.message; }
-      }, args: [args.text] });
-      return { content: [{ type: 'text', text: results?.[0]?.result || 'undefined' }] };
+      // Use CDP Runtime.evaluate to bypass page CSP (eval blocked on many sites)
+      await ensureDebugger(tabId);
+      try {
+        const result = await cdp('Runtime.evaluate', {
+          expression: args.text,
+          returnByValue: true,
+          awaitPromise: true,
+        });
+        if (result.exceptionDetails) {
+          const errMsg = result.exceptionDetails.exception?.description || result.exceptionDetails.text || 'Unknown error';
+          return { content: [{ type: 'text', text: 'Error: ' + errMsg }] };
+        }
+        return { content: [{ type: 'text', text: String(result.result?.value ?? 'undefined') }] };
+      } catch (e) {
+        return { content: [{ type: 'text', text: 'Error: ' + e.message }] };
+      }
     }
 
     case 'file_upload': {
@@ -924,6 +1221,10 @@ async function executeTool(name, args) {
       const steps = args.approach?.join('\n• ') || '';
       const domains = args.domains?.join(', ') || '';
       return { content: [{ type: 'text', text: `Plan updated:\nDomains: ${domains}\nSteps:\n• ${steps}` }] };
+    }
+
+    case 'turn_answer_start': {
+      return { content: [{ type: 'text', text: 'Proceeding with response.' }] };
     }
 
     default:
@@ -1025,6 +1326,12 @@ async function sendMessage() {
   const text = inputEl.value.trim();
   if (!text || isRunning) return;
   inputEl.value = ''; inputEl.style.height = 'auto';
+  // Collapse previous groups before new message
+  messagesEl.querySelectorAll('.tool-group:not(.collapsed)').forEach(g => {
+    g.classList.add('collapsed');
+    const arrow = g.querySelector('.tool-group-arrow');
+    if (arrow) arrow.textContent = '\u203A';
+  });
   addMsg('user', text);
   const userContent = [];
   for (const img of pendingImages) userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
@@ -1042,12 +1349,29 @@ async function runAgentLoop() {
     for (let step = 1; step <= getMaxLoops(); step++) {
       setStatus(`Step ${step}...`);
 
+      const prunedMessages = pruneConversation(conversation);
+
+      // Add cache_control to the last assistant message's last content block (immutable — never mutate conversation)
+      let lastAsstIdx = -1;
+      for (let i = prunedMessages.length - 1; i >= 0; i--) {
+        if (prunedMessages[i].role === 'assistant' && Array.isArray(prunedMessages[i].content) && prunedMessages[i].content.length > 0) {
+          lastAsstIdx = i;
+          break;
+        }
+      }
+      const messagesForAPI = lastAsstIdx === -1 ? prunedMessages : prunedMessages.map((msg, i) => {
+        if (i !== lastAsstIdx || !Array.isArray(msg.content)) return msg;
+        return { ...msg, content: msg.content.map((block, j) =>
+          j === msg.content.length - 1 ? { ...block, cache_control: { type: 'ephemeral' } } : block
+        ) };
+      });
+
       const body = {
         model: getModel(),
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         tools: TOOLS,
-        messages: pruneConversation(conversation),
+        messages: messagesForAPI,
         stream: true,
       };
       if (thinkingEnabled) body.thinking = { type: 'enabled', budget_tokens: THINKING_BUDGET };
@@ -1068,7 +1392,7 @@ async function runAgentLoop() {
         if (abortController.signal.aborted) break;
         switch (evt.type) {
           case 'content_block_start':
-            if (evt.content_block?.type === 'text') { textDiv = addMsg('ai', ''); textBuf = ''; }
+            if (evt.content_block?.type === 'text') { textDiv = addTextStep(); textBuf = ''; }
             else if (evt.content_block?.type === 'tool_use') { toolBuf = { id: evt.content_block.id, name: evt.content_block.name, input: '' }; }
             else if (evt.content_block?.type === 'thinking') { textDiv = addThinking(''); textBuf = ''; setStatus('Thinking...'); }
             break;
@@ -1080,9 +1404,6 @@ async function runAgentLoop() {
           case 'content_block_stop':
             if (textBuf && textDiv && !textDiv.classList.contains('thinking')) {
               blocks.push({ type: 'text', text: textBuf });
-              const btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = '📋';
-              const t = textBuf; btn.onclick = () => { navigator.clipboard.writeText(t); btn.textContent = '✓'; setTimeout(() => btn.textContent = '📋', 1000); };
-              textDiv.appendChild(btn);
             }
             if (toolBuf) {
               try { toolBuf.input = JSON.parse(toolBuf.input || '{}'); } catch { toolBuf.input = {}; }
@@ -1101,11 +1422,16 @@ async function runAgentLoop() {
       if (blocks.length > 0) conversation.push({ role: 'assistant', content: blocks });
 
       const toolUses = blocks.filter(b => b.type === 'tool_use');
-      if (toolUses.length === 0 || stopReason === 'end_turn') break;
+      if (toolUses.length === 0) break;
 
       // Execute tools
       const results = [];
       for (const tool of toolUses) {
+        // Skip UI display for signal tools
+        if (tool.name === 'turn_answer_start') {
+          results.push({ type: 'tool_result', tool_use_id: tool.id, content: [{ type: 'text', text: 'Proceeding with response.' }] });
+          continue;
+        }
         setStatus(`${tool.name}...`);
         addToolCall(tool.name, tool.input);
         try {
@@ -1122,16 +1448,160 @@ async function runAgentLoop() {
           results.push({ type: 'tool_result', tool_use_id: tool.id, is_error: true, content: [{ type: 'text', text: err.message }] });
         }
       }
-      endToolGroup();
       conversation.push({ role: 'user', content: results });
+      if (stopReason === 'end_turn') break;
     }
   } catch (err) {
     if (err.name !== 'AbortError') addMsg('system', `Error: ${err.message}`);
   } finally {
+    finalizeToolGroup(activeToolGroup);
+    endToolGroup();
     await releaseDebugger();
     setRunning(false); setStatus(''); inputEl.focus();
     saveCurrentState();
   }
+}
+
+// ── Hook Message Handlers ──
+
+async function handleHookMessage(msg) {
+  // Stop task command
+  if (msg.type === 'hook_stop') {
+    if (abortController) abortController.abort();
+    sendHookResponse(msg.taskId, 'stopped', 'Task stopped by hook');
+    return;
+  }
+
+  if (msg.type !== 'hook_task') return;
+
+  const taskId = msg.taskId || ('task_' + Date.now());
+  activeHookTaskId = taskId;
+
+  // Busy check
+  if (isRunning) {
+    sendHookResponse(taskId, 'error', 'Agent is busy with another task');
+    activeHookTaskId = null;
+    return;
+  }
+
+  // Lock target tab if specified
+  if (msg.tabId) {
+    lockedTabId = msg.tabId;
+  }
+
+  // Switch or create conversation
+  if (msg.conversationId && allConversations[msg.conversationId]) {
+    switchConversation(msg.conversationId);
+  } else if (msg.action !== 'continue_task') {
+    if (activeConvId && conversation.length > 0) saveCurrentState();
+    createConversation();
+    conversation = [];
+    messagesEl.innerHTML = '';
+    renderConversationList();
+  }
+
+  // Override model if specified
+  if (msg.model) {
+    modelSelect.value = msg.model;
+  }
+
+  // Collapse previous groups
+  messagesEl.querySelectorAll('.tool-group:not(.collapsed)').forEach(g => {
+    g.classList.add('collapsed');
+    const arrow = g.querySelector('.tool-group-arrow');
+    if (arrow) arrow.textContent = '\u203A';
+  });
+
+  // Inject task as user message
+  const text = msg.task;
+  addMsg('user', text);
+  conversation.push({ role: 'user', content: text });
+
+  // Record conversation length before this task (to extract only new messages)
+  const convLenBefore = conversation.length;
+
+  // Send "started" response
+  sendHookResponse(taskId, 'started', null);
+
+  // Run agent loop
+  await runAgentLoop();
+
+  // Build completed response with optional extra data
+  const newMessages = conversation.slice(convLenBefore);
+
+  // Extract last assistant text
+  let resultText = 'Task completed';
+  for (let i = newMessages.length - 1; i >= 0; i--) {
+    const m = newMessages[i];
+    if (m.role === 'assistant' && Array.isArray(m.content)) {
+      const textBlock = [...m.content].reverse().find(b => b.type === 'text');
+      if (textBlock?.text) { resultText = textBlock.text; break; }
+    } else if (m.role === 'assistant' && typeof m.content === 'string') {
+      resultText = m.content; break;
+    }
+  }
+
+  const extra = {};
+
+  // include_screenshot: return last screenshot as base64
+  if (msg.include_screenshot) {
+    for (let i = newMessages.length - 1; i >= 0; i--) {
+      const m = newMessages[i];
+      if (m.role !== 'user' || !Array.isArray(m.content)) continue;
+      for (let j = m.content.length - 1; j >= 0; j--) {
+        const block = m.content[j];
+        // tool_result with image
+        if (block.type === 'tool_result' && Array.isArray(block.content)) {
+          const img = block.content.find(b => b.type === 'image');
+          if (img?.source?.data) {
+            extra.screenshot = { data: img.source.data, media_type: img.source.media_type || 'image/png' };
+            break;
+          }
+        }
+      }
+      if (extra.screenshot) break;
+    }
+  }
+
+  // include_tools: return structured tool call/result log
+  if (msg.include_tools) {
+    const tools = [];
+    for (const m of newMessages) {
+      if (m.role === 'assistant' && Array.isArray(m.content)) {
+        for (const b of m.content) {
+          if (b.type === 'tool_use') tools.push({ type: 'call', name: b.name, input: b.input });
+        }
+      }
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        for (const b of m.content) {
+          if (b.type === 'tool_result') {
+            const texts = b.content?.filter(c => c.type === 'text').map(c => c.text) || [];
+            const hasImage = b.content?.some(c => c.type === 'image') || false;
+            tools.push({ type: 'result', tool_use_id: b.tool_use_id, is_error: b.is_error || false, texts, hasImage });
+          }
+        }
+      }
+    }
+    extra.tools = tools;
+  }
+
+  sendHookResponse(taskId, 'completed', resultText, extra);
+  activeHookTaskId = null;
+}
+
+function sendHookResponse(taskId, status, result, extra) {
+  if (!swPort) return;
+  try {
+    swPort.postMessage({
+      type: 'hook_response',
+      taskId,
+      status,
+      result,
+      conversationId: activeConvId,
+      tabId: lockedTabId,
+      ...extra,
+    });
+  } catch {}
 }
 
 // ── Init ──
@@ -1140,6 +1610,8 @@ loadConversations().then(() => {
     const conv = allConversations[activeConvId];
     conversation = conv.messages || [];
     messagesEl.innerHTML = conv.displayMessages || '';
+    // Finalize any uncollapsed groups restored from storage
+    messagesEl.querySelectorAll('.tool-group:not(.collapsed)').forEach(g => finalizeToolGroup(g));
     scrollBottom();
   } else { createConversation(); }
   renderConversationList();
