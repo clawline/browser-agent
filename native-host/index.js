@@ -11,11 +11,29 @@
  */
 
 import { createServer } from 'node:http';
+import { createWriteStream, statSync, renameSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 // ── Config ──
 
 const HTTP_PORT = parseInt(process.env.CLAWLINE_HOOK_PORT || '4821', 10);
 const REQUEST_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+const ERROR_LOG_PATH = join(dirname(fileURLToPath(import.meta.url)), 'error.log');
+const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5 MB
+
+let errorStream = createWriteStream(ERROR_LOG_PATH, { flags: 'a' });
+
+function rotateLogIfNeeded() {
+  try {
+    const stat = statSync(ERROR_LOG_PATH);
+    if (stat.size > MAX_LOG_SIZE) {
+      errorStream.end();
+      renameSync(ERROR_LOG_PATH, ERROR_LOG_PATH + '.old');
+      errorStream = createWriteStream(ERROR_LOG_PATH, { flags: 'a' });
+    }
+  } catch {}
+}
 
 // ── State ──
 
@@ -71,6 +89,14 @@ chromeConnected = true;
 // ── Chrome Message Handling ──
 
 function handleChromeMessage(msg) {
+  // Error log — append to local file
+  if (msg.type === 'error_log' && msg.error) {
+    const e = msg.error;
+    const line = `[${e.timestamp || new Date().toISOString()}] [${e.from || 'unknown'}] ${e.message}${e.source ? ` (${e.source}:${e.line}:${e.col})` : ''}${e.stack ? '\n  ' + e.stack.split('\n').slice(0, 10).join('\n  ') : ''}\n`;
+    try { rotateLogIfNeeded(); errorStream.write(line); } catch {}
+    return;
+  }
+
   // Chrome sends responses with type: 'hook_response'
   if (msg.type === 'hook_response' && msg.taskId) {
     const pending = pendingRequests.get(msg.taskId);

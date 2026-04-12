@@ -45,6 +45,45 @@ let currentWindowId = null; // This sidepanel's window — used by getTargetTab(
     swPort = null;
   }
 })();
+
+// ── Error logging — capture and send to native host via service worker ──
+let _lastErrKey = '', _lastErrTime = 0;
+
+function sendErrorLog(error) {
+  if (!swPort) return;
+  const key = String(error.message || error);
+  const now = Date.now();
+  if (key === _lastErrKey && now - _lastErrTime < 5000) return;
+  _lastErrKey = key;
+  _lastErrTime = now;
+  try {
+    swPort.postMessage({
+      type: 'error_log',
+      error: {
+        message: key,
+        source: error.source || error.filename || '',
+        line: error.lineno || error.line || 0,
+        col: error.colno || error.col || 0,
+        stack: error.stack || error.error?.stack || '',
+        timestamp: new Date().toISOString(),
+        from: 'sidepanel',
+      },
+    });
+  } catch {}
+}
+
+window.addEventListener('error', (e) => {
+  sendErrorLog({ message: e.message, source: e.filename, lineno: e.lineno, colno: e.colno, stack: e.error?.stack || '' });
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+  const err = e.reason;
+  sendErrorLog({
+    message: 'Unhandled Promise rejection: ' + (err?.message || String(err)),
+    stack: err?.stack || '',
+  });
+});
+
 const FAST_MODEL = 'claude-haiku-4-5-20251001';
 const THINKING_BUDGET = 10000;
 

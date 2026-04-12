@@ -15,9 +15,6 @@
       }
     }
   },
-  "side_panel": {
-    "default_path": "sidepanel.html"
-  },
   "content_scripts": [{
     "js": ["content-script.js"],
     "matches": ["<all_urls>"],
@@ -33,6 +30,7 @@
     "activeTab",
     "scripting",
     "debugger",
+    "tabGroups",
     "tabs",
     "nativeMessaging"
   ],
