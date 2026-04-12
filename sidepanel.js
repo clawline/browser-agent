@@ -895,7 +895,7 @@ async function executeTool(name, args) {
               await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
               for (const m of mods.reverse()) await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: modMap[m] || m });
             } else {
-              const map = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, Space: 32, Delete: 46, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
+              const map = { Enter: 13, Return: 13, Tab: 9, Escape: 27, Backspace: 8, Space: 32, Delete: 46, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
               const code = map[k] || k.charCodeAt(0);
               await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: k, windowsVirtualKeyCode: code });
               await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: k, windowsVirtualKeyCode: code });
@@ -950,11 +950,14 @@ async function executeTool(name, args) {
       }
       if (action === 'zoom') {
         // Capture a specific region at full resolution for inspection
-        const [x0, y0, x1, y1] = args.region || [0, 0, 400, 300];
+        // Scale coordinates from screenshot space to viewport space
+        const raw = args.region || [0, 0, 400, 300];
+        const [sx0, sy0] = scaleCoordinate(raw[0], raw[1]);
+        const [sx1, sy1] = scaleCoordinate(raw[2], raw[3]);
         await ensureDebugger(tabId);
         const result = await cdp('Page.captureScreenshot', {
           format: 'jpeg', quality: 90, captureBeyondViewport: false, fromSurface: true,
-          clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0, scale: 2 },
+          clip: { x: sx0, y: sy0, width: sx1 - sx0, height: sy1 - sy0, scale: 2 },
         });
         return { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: result.data } }] };
       }
