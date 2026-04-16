@@ -39,6 +39,6 @@
     "128": "icon-128.png"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://api.anthropic.com https://*.openclaws.co.uk; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
   }
 }

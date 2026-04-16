@@ -20,7 +20,7 @@ self.addEventListener('error', (e) => {
           from: 'service-worker',
         },
       });
-    } catch {}
+    } catch (e) { console.warn('[clawline] failed to send error log:', e.message); }
   }
 });
 
@@ -37,7 +37,7 @@ self.addEventListener('unhandledrejection', (e) => {
           from: 'service-worker',
         },
       });
-    } catch {}
+    } catch (e) { console.warn('[clawline] failed to send rejection log:', e.message); }
   }
 });
 
@@ -83,6 +83,17 @@ chrome.commands.onCommand.addListener((command) => {
 
 // ── Native Messaging ──
 
+// Sidepanel port registry (declared before connectNativeHost which references it)
+const sidepanelPorts = new Map(); // windowId → port
+
+// Broadcast hook bridge status to all sidepanels
+function broadcastHookStatus() {
+  const status = { type: 'hook_status', connected: !!nativePort };
+  for (const [, port] of sidepanelPorts) {
+    try { port.postMessage(status); } catch (e) { console.warn('[clawline] broadcast status failed:', e.message); }
+  }
+}
+
 function connectNativeHost() {
   if (nativePort) return;
   try {
@@ -90,11 +101,14 @@ function connectNativeHost() {
     nativePort.onMessage.addListener(handleNativeMessage);
     nativePort.onDisconnect.addListener(() => {
       nativePort = null;
+      broadcastHookStatus();
     });
     console.log('[clawline] native host connected');
+    broadcastHookStatus();
   } catch (e) {
     console.log('[clawline] native host connect failed:', e.message);
     nativePort = null;
+    broadcastHookStatus();
   }
 }
 
@@ -105,8 +119,6 @@ chrome.runtime.onStartup.addListener(() => { connectNativeHost(); });
 connectNativeHost();
 
 // ── Sidepanel Port Registry ──
-
-const sidepanelPorts = new Map(); // windowId → port
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidepanel') return;
@@ -126,17 +138,19 @@ chrome.runtime.onConnect.addListener((port) => {
       registeredWindowId = msg.windowId;
       sidepanelPorts.set(msg.windowId, port);
       console.log('[clawline] sidepanel registered, windowId:', msg.windowId);
+      // Send current hook status immediately
+      try { port.postMessage({ type: 'hook_status', connected: !!nativePort }); } catch (e) { console.warn('[clawline] send hook_status failed:', e.message); }
       return;
     }
     if (msg.type === 'hook_response') {
       if (nativePort) {
-        try { nativePort.postMessage(msg); } catch {}
+        try { nativePort.postMessage(msg); } catch (e) { console.warn('[clawline] forward hook_response failed:', e.message); }
       }
       return;
     }
     if (msg.type === 'error_log') {
       if (nativePort) {
-        try { nativePort.postMessage(msg); } catch {}
+        try { nativePort.postMessage(msg); } catch (e) { console.warn('[clawline] forward error_log failed:', e.message); }
       }
       return;
     }
@@ -160,7 +174,7 @@ async function handleNativeMessage(msg) {
       sessions.push({ windowId });
     }
     if (nativePort) {
-      try { nativePort.postMessage({ type: 'sessions', sessions }); } catch {}
+      try { nativePort.postMessage({ type: 'sessions', sessions }); } catch (e) { console.warn('[clawline] send sessions failed:', e.message); }
     }
     return;
   }
@@ -169,7 +183,7 @@ async function handleNativeMessage(msg) {
   if (msg.type === 'hook_stop') {
     // Broadcast to all sidepanels — they'll check the taskId
     for (const [, port] of sidepanelPorts) {
-      try { port.postMessage(msg); } catch {}
+      try { port.postMessage(msg); } catch (e) { console.warn('[clawline] broadcast hook_stop failed:', e.message); }
     }
     return;
   }
@@ -188,8 +202,11 @@ async function handleNativeMessage(msg) {
         // Open sidepanel for this tab
         chrome.sidePanel.setOptions({ tabId: msg.tabId, path: 'sidepanel.html', enabled: true });
         chrome.sidePanel.open({ windowId: tab.windowId });
-        // Wait briefly for sidepanel to register
-        await new Promise(r => setTimeout(r, 1500));
+        // Poll for sidepanel registration (200ms intervals, 5s timeout)
+        for (let i = 0; i < 25; i++) {
+          await new Promise(r => setTimeout(r, 200));
+          if (sidepanelPorts.has(tab.windowId)) break;
+        }
         targetPort = sidepanelPorts.get(tab.windowId);
       }
     } catch (e) {
@@ -201,7 +218,7 @@ async function handleNativeMessage(msg) {
             status: 'error',
             error: `Tab ${msg.tabId} not found: ${e.message}`,
           });
-        } catch {}
+        } catch (e2) { console.warn('[clawline] send tab error failed:', e2.message); }
       }
       return;
     }
@@ -218,7 +235,7 @@ async function handleNativeMessage(msg) {
         // Fall back to any connected sidepanel
         targetPort = sidepanelPorts.values().next().value;
       }
-    } catch {}
+    } catch (e) { console.warn('[clawline] window lookup failed:', e.message); }
   }
 
   if (!targetPort) {
@@ -230,7 +247,7 @@ async function handleNativeMessage(msg) {
           status: 'error',
           error: 'No sidepanel available. Open the extension side panel first.',
         });
-      } catch {}
+      } catch (e) { console.warn('[clawline] send no-sidepanel error failed:', e.message); }
     }
     return;
   }

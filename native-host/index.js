@@ -139,7 +139,17 @@ function generateTaskId() {
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
+    let totalSize = 0;
+    const MAX_BODY_SIZE = 1024 * 1024; // 1 MB
+    req.on('data', (c) => {
+      totalSize += c.length;
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error('Request body exceeds 1MB limit'));
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => {
       try {
         const body = Buffer.concat(chunks).toString('utf-8');
