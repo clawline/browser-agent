@@ -24,6 +24,20 @@ const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5 MB
 
 let errorStream = createWriteStream(ERROR_LOG_PATH, { flags: 'a' });
 
+// Redact common secret shapes before writing to the persistent error log.
+// Covers: Anthropic (sk-ant-*), OpenAI-style (sk-*), Bearer tokens, and x-api-key/api_key values.
+const _SECRET_PATTERNS = [
+  /sk-ant-[A-Za-z0-9_-]{20,}/g,
+  /sk-[A-Za-z0-9_-]{20,}/g,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{20,}/gi,
+  /(x-api-key|api[_-]?key|authorization)\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{12,}["']?/gi,
+];
+function redactSecrets(s) {
+  let out = String(s);
+  for (const re of _SECRET_PATTERNS) out = out.replace(re, '[REDACTED]');
+  return out;
+}
+
 function rotateLogIfNeeded() {
   try {
     const stat = statSync(ERROR_LOG_PATH);
@@ -93,7 +107,7 @@ function handleChromeMessage(msg) {
   if (msg.type === 'error_log' && msg.error) {
     const e = msg.error;
     const line = `[${e.timestamp || new Date().toISOString()}] [${e.from || 'unknown'}] ${e.message}${e.source ? ` (${e.source}:${e.line}:${e.col})` : ''}${e.stack ? '\n  ' + e.stack.split('\n').slice(0, 10).join('\n  ') : ''}\n`;
-    try { rotateLogIfNeeded(); errorStream.write(line); } catch {}
+    try { rotateLogIfNeeded(); errorStream.write(redactSecrets(line)); } catch {}
     return;
   }
 
@@ -101,17 +115,15 @@ function handleChromeMessage(msg) {
   if (msg.type === 'hook_response' && msg.taskId) {
     const pending = pendingRequests.get(msg.taskId);
     if (pending) {
-      clearTimeout(pending.timer);
-      pendingRequests.delete(msg.taskId);
-
       if (msg.status === 'started') {
-        // Task started — update pending to wait for completion
-        // Store initial response data, keep waiting
-        pending.startedData = msg;
-        pendingRequests.set(msg.taskId, pending);
+        // Idempotent: only the first 'started' message is recorded. A duplicate
+        // (or a rogue 'started' after a real final response) must not overwrite
+        // the resolver and leave the HTTP request hanging forever.
+        if (!pending.startedData) pending.startedData = msg;
         return;
       }
-
+      clearTimeout(pending.timer);
+      pendingRequests.delete(msg.taskId);
       // Final response (completed / error / stopped)
       pending.resolve(msg);
     }
@@ -222,6 +234,19 @@ const server = createServer(async (req, res) => {
         pendingRequests.set(taskId, { resolve, timer });
       });
 
+      // If the HTTP client disconnects before the task finishes, free the timer
+      // and the Map slot (otherwise REQUEST_TIMEOUT worth of timers accumulate)
+      // and tell Chrome to stop the in-flight task.
+      const onClientGone = () => {
+        const p = pendingRequests.get(taskId);
+        if (!p) return;
+        clearTimeout(p.timer);
+        pendingRequests.delete(taskId);
+        if (chromeConnected) { try { sendToChrome({ type: 'hook_stop', taskId }); } catch {} }
+        p.resolve({ status: 'aborted', taskId, error: 'Client disconnected' });
+      };
+      res.on('close', () => { if (!res.writableEnded) onClientGone(); });
+
       // Send to Chrome
       sendToChrome(msg);
 
@@ -285,6 +310,7 @@ const server = createServer(async (req, res) => {
         name: 'clawline-hook',
         version: '1.0.0',
         chromeConnected,
+        port: actualPort,
         pendingTasks: pendingRequests.size,
       });
       return;
@@ -296,20 +322,28 @@ const server = createServer(async (req, res) => {
   }
 });
 
+let actualPort = HTTP_PORT;
+
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    log(`Port ${HTTP_PORT} in use, retrying in 2s...`);
-    setTimeout(() => {
-      server.close();
-      server.listen(HTTP_PORT, '127.0.0.1');
-    }, 2000);
+    actualPort++;
+    if (actualPort > HTTP_PORT + 10) {
+      log(`All ports ${HTTP_PORT}-${actualPort - 1} in use, giving up`);
+      return;
+    }
+    log(`Port ${actualPort - 1} in use, trying ${actualPort}...`);
+    server.listen(actualPort, '127.0.0.1');
   } else {
     log('HTTP server error:', err.message);
   }
 });
 
-server.listen(HTTP_PORT, '127.0.0.1', () => {
-  log(`HTTP server listening on http://127.0.0.1:${HTTP_PORT}`);
+server.listen(HTTP_PORT, '127.0.0.1');
+
+server.on('listening', () => {
+  actualPort = server.address().port;
+  log(`HTTP server listening on http://127.0.0.1:${actualPort}`);
+  sendToChrome({ type: 'hook_port', port: actualPort });
 });
 
 // ── Logging (to stderr, since stdout is for native messaging) ──

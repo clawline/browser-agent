@@ -14,12 +14,12 @@
     </div>
     <div id="conversation-list"></div>
   </div>
+  <div id="sidebar-backdrop"></div>
   <div id="main">
     <div id="header">
       <button id="history-btn" title="History">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <h1>Clawline</h1>
       <div style="flex:1"></div>
       <div id="hook-status" title="Hook Bridge: disconnected">
         <span id="hook-dot"></span>
@@ -67,6 +67,15 @@
       <div class="settings-row settings-actions">
         <button id="cfg-save">Save</button>
         <button id="cfg-cancel">Cancel</button>
+      </div>
+      <div class="settings-divider"></div>
+      <div class="settings-row">
+        <span class="settings-section-label">History</span>
+      </div>
+      <div class="settings-row settings-actions">
+        <button id="cfg-export">Export</button>
+        <button id="cfg-import-btn">Import</button>
+        <input type="file" id="cfg-import-file" accept=".json" hidden>
       </div>
     </div>
     <div id="messages"></div>

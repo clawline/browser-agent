@@ -1,9 +1,17 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: Georgia, 'Times New Roman', 'Noto Serif SC', 'Source Han Serif SC', serif; background: #f9f8f6; color: #1a1a1a; height: 100vh; display: flex; flex-direction: row; overflow: hidden; }
 
-/* Sidebar */
-#sidebar { width: 0; overflow: hidden; background: #fff; border-right: 1px solid #e5e3de; display: flex; flex-direction: column; transition: width 0.2s; flex-shrink: 0; }
-#sidebar.open { width: 240px; }
+/* Custom scrollbar — all scrollable areas */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+
+/* Sidebar — overlay floating panel */
+#sidebar { position: absolute; top: 0; left: 0; bottom: 0; width: 260px; z-index: 100; background: #fff; border-right: 1px solid #e5e3de; display: flex; flex-direction: column; box-shadow: 4px 0 16px rgba(0,0,0,0.08); transform: translateX(-100%); transition: transform 0.2s ease; }
+#sidebar.open { transform: translateX(0); }
+#sidebar-backdrop { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 99; background: rgba(0,0,0,0.15); }
+#sidebar.open ~ #sidebar-backdrop { display: block; }
 #sidebar-header { padding: 10px 12px; border-bottom: 1px solid #e5e3de; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; color: #555; }
 #sidebar-close { border: none; background: none; cursor: pointer; font-size: 18px; color: #999; }
 #sidebar-close:hover { color: #333; }
@@ -26,7 +34,6 @@ body { font-family: Georgia, 'Times New Roman', 'Noto Serif SC', 'Source Han Ser
 #header { padding: 6px 12px; border-bottom: 1px solid #e5e3de; background: #fff; display: flex; align-items: center; gap: 8px; }
 #history-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid #d4d0c8; background: #fff; cursor: pointer; color: #666; display: flex; align-items: center; justify-content: center; }
 #history-btn:hover { background: #f0ede8; }
-#header h1 { font-size: 14px; font-weight: 700; color: #1a1a1a; letter-spacing: 0.5px; }
 #new-chat { width: 28px; height: 28px; border-radius: 6px; border: 1px solid #d4d0c8; background: #fff; cursor: pointer; color: #666; display: flex; align-items: center; justify-content: center; }
 #new-chat:hover { background: #f0ede8; }
 #hook-status { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; border: 1px solid #e5e3de; background: #faf9f7; font-size: 11px; color: #999; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -73,6 +80,8 @@ body { font-family: Georgia, 'Times New Roman', 'Noto Serif SC', 'Source Han Ser
 .settings-actions button:hover { background: #f0ede8; }
 #cfg-save { background: #d4a574; color: #fff; border-color: #c49464; }
 #cfg-save:hover { background: #c49464; }
+.settings-divider { height: 1px; background: #e5e3de; margin: 4px 0 8px; }
+.settings-section-label { font-size: 11px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
 /* Messages */
 #messages { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }

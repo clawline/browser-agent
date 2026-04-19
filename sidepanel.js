@@ -293,7 +293,7 @@ function updateConvTitle(conv) {
 function saveCurrentState() {
   const conv = getActiveConv();
   conv.messages = conversation;
-  conv.displayMessages = messagesEl.innerHTML.replace(/src="data:image\/[^"]+"/g, 'src=""');
+  conv.displayMessages = sanitizeHtml(messagesEl.innerHTML).replace(/src="data:image\/[^"]+"/g, 'src=""');
   conv.updatedAt = Date.now();
   updateConvTitle(conv);
   saveConversations();
@@ -303,13 +303,13 @@ function saveCurrentState() {
 function switchConversation(id) {
   if (activeConvId && allConversations[activeConvId]) {
     allConversations[activeConvId].messages = conversation;
-    allConversations[activeConvId].displayMessages = messagesEl.innerHTML.replace(/src="data:image\/[^"]+"/g, 'src=""');
+    allConversations[activeConvId].displayMessages = sanitizeHtml(messagesEl.innerHTML).replace(/src="data:image\/[^"]+"/g, 'src=""');
   }
   activeConvId = id;
   activeToolGroup = null; stepCount = 0; // Reset tool group state
   const conv = allConversations[id];
   conversation = conv?.messages || [];
-  messagesEl.innerHTML = conv?.displayMessages || '';
+  messagesEl.innerHTML = sanitizeHtml(conv?.displayMessages || '');
   migrateOldMessages(messagesEl);
   // Finalize any uncollapsed groups restored from storage
   messagesEl.querySelectorAll('.tool-group:not(.collapsed)').forEach(g => finalizeToolGroup(g));
@@ -356,6 +356,73 @@ function formatTimeAgo(ts) {
 
 function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
+// ── HTML Sanitizer (allowlist, DOM-based) ──
+// Prevents XSS from AI output, tool results, or restored conversation HTML.
+const _SAN_ALLOWED_TAGS = new Set([
+  'A','B','BLOCKQUOTE','BR','BUTTON','CODE','DIV','EM','H1','H2','H3','H4','H5','H6',
+  'HR','I','IMG','LI','OL','P','PRE','SPAN','STRONG','TABLE','TBODY','TD','TH','THEAD','TR','UL',
+]);
+// Attributes allowed on any tag (plus data-*)
+const _SAN_GLOBAL_ATTRS = new Set(['class','title','dir','lang']);
+// Per-tag extra attributes
+const _SAN_TAG_ATTRS = {
+  A: new Set(['href','target','rel']),
+  IMG: new Set(['src','alt','width','height']),
+};
+function _sanIsSafeUrl(url, { allowData = false } = {}) {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim().toLowerCase();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return true;
+  if (allowData && trimmed.startsWith('data:image/')) return true;
+  return false;
+}
+function sanitizeHtml(html) {
+  if (!html) return '';
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(html);
+  const walk = (node) => {
+    // NodeList is live; iterate over a snapshot
+    const children = Array.from(node.childNodes);
+    for (const child of children) {
+      if (child.nodeType === Node.TEXT_NODE) continue;
+      if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); continue; }
+      const tag = child.tagName;
+      if (!_SAN_ALLOWED_TAGS.has(tag)) {
+        // Recurse first so unsafe descendants (e.g. <img src="javascript:...">)
+        // get their attributes sanitized before we hoist them into the parent.
+        walk(child);
+        const parent = child.parentNode;
+        while (child.firstChild) parent.insertBefore(child.firstChild, child);
+        child.remove();
+        continue;
+      }
+      // Strip attributes not in allowlist; enforce URL safety
+      const allowedForTag = _SAN_TAG_ATTRS[tag];
+      for (const attr of Array.from(child.attributes)) {
+        const name = attr.name.toLowerCase();
+        const isData = name.startsWith('data-');
+        const allowed = isData || _SAN_GLOBAL_ATTRS.has(name) || (allowedForTag && allowedForTag.has(name));
+        if (!allowed) { child.removeAttribute(attr.name); continue; }
+        if (name === 'href' && !_sanIsSafeUrl(attr.value)) { child.removeAttribute(attr.name); continue; }
+        if (name === 'src') {
+          const allowData = tag === 'IMG';
+          if (!_sanIsSafeUrl(attr.value, { allowData })) { child.removeAttribute(attr.name); continue; }
+        }
+      }
+      // Force safe defaults for <a>
+      if (tag === 'A') {
+        child.setAttribute('target', '_blank');
+        child.setAttribute('rel', 'noopener noreferrer');
+      }
+      walk(child);
+    }
+  };
+  walk(tpl.content);
+  const container = document.createElement('div');
+  container.appendChild(tpl.content);
+  return container.innerHTML;
+}
+
 // ── State ──
 
 let conversation = [];
@@ -390,11 +457,81 @@ fastMode = localStorage.getItem('clawline-fast') === 'true';
 if (thinkingEnabled) thinkingToggle.classList.add('active');
 if (fastMode) fastToggle.classList.add('active');
 
+// ── Skill Modes (declared early — referenced by restore logic below) ──
+
+const SKILL_MODES = {
+  general: {
+    label: 'General',
+    instructions: `- Be concise. Focus on completing the task, not explaining your process.
+- Handle errors gracefully — try alternatives when one approach fails.
+- For multi-field forms, use batch_form_input (with click_after for submit). Use form_input only for a single field.
+- You may investigate issues using console, network, and JS tools when needed.
+- Balance between completing the task efficiently and being thorough.`,
+  },
+  qa: {
+    label: 'QA Test',
+    instructions: `- You are a QA tester. Execute the user's test steps in order and report results in a structured format.
+
+EXECUTION RULES:
+- Follow numbered steps EXACTLY in order. Do NOT skip, reorder, or invent steps.
+- For multi-field forms, use batch_form_input (with click_after for submit) — never fill one field at a time.
+- After actions that trigger navigation or loading, pass wait_for="load" so the next step sees a settled page.
+- If the submit button needs wait_for="load" to settle, omit click_after from batch_form_input and call computer left_click(ref=submit_btn, wait_for="load") as a separate step. (batch_form_input's click_after does not support wait_for.)
+- Do NOT retry a failed step. Mark dependent subsequent steps as BLOCKED instead of executing them.
+
+SCREENSHOT POLICY (efficient evidence capture):
+- DO screenshot at state transitions: after login, after form submission, after navigation, and at the final result.
+- DO screenshot when a step fails (tool returned error, wait_for timed out, batch reported ok:false, or page state doesn't match expectation).
+- Do NOT screenshot during data entry or between intermediate clicks — trust the tool_result text.
+- Target: one screenshot per logical checkpoint, not per atomic action.
+
+INVESTIGATION:
+- Use read_console_messages or read_network_requests ONLY when diagnosing a FAIL, to give the user a useful failure reason. Otherwise do not investigate.
+- Never modify the page or "fix" issues you find. Report only.
+
+REPORT FORMAT (one block per step):
+Step N: <verbatim step description>
+Result: PASS | FAIL | BLOCKED
+Evidence: <one-line observation — what you saw, error text, status code, etc.>
+
+End with a summary line: "X passed / Y failed / Z blocked of N steps."`,
+  },
+  scraper: {
+    label: 'Scraper',
+    instructions: `- You are a data extraction specialist. Focus on getting the requested data.
+- If a page doesn't load or blocks you, try alternatives: different selectors, scroll, wait, or JavaScript extraction.
+- Structure extracted data clearly using tables, lists, or JSON format.
+- Handle pagination automatically — keep extracting until all pages are done.
+- Skip non-essential content (ads, navigation, footers, cookie banners).
+- Be resilient: if one approach fails, try another without asking the user.`,
+  },
+  custom: {
+    label: 'Custom',
+    instructions: '', // filled from localStorage
+  },
+};
+
+let currentSkillMode = 'general';
+
 // Restore API settings
 const savedApiUrl = localStorage.getItem('clawline-api-url');
 if (savedApiUrl) API_URL = savedApiUrl;
-const savedApiKey = localStorage.getItem('clawline-api-key');
-if (savedApiKey) API_KEY = savedApiKey;
+// API_KEY is kept in chrome.storage.session (memory-only, cleared when the
+// browser closes). A one-time migration moves any legacy plaintext value out
+// of localStorage so we don't leave secrets at rest on disk.
+(async () => {
+  try {
+    const legacy = localStorage.getItem('clawline-api-key');
+    if (legacy) {
+      await chrome.storage.session.set({ 'clawline-api-key': legacy });
+      localStorage.removeItem('clawline-api-key');
+      API_KEY = legacy;
+    } else {
+      const res = await chrome.storage.session.get('clawline-api-key');
+      if (res['clawline-api-key']) API_KEY = res['clawline-api-key'];
+    }
+  } catch (e) { console.warn('[clawline] api key load failed:', e); }
+})();
 
 // Restore skill mode
 const modeSelect = document.getElementById('mode-select');
@@ -452,17 +589,58 @@ settingsBtn.addEventListener('click', () => {
   }
 });
 
-document.getElementById('cfg-save').addEventListener('click', () => {
+document.getElementById('cfg-save').addEventListener('click', async () => {
   API_URL = cfgApiUrl.value.trim() || 'http://127.0.0.1:4819';
   API_KEY = cfgApiKey.value.trim();
   localStorage.setItem('clawline-api-url', API_URL);
-  localStorage.setItem('clawline-api-key', API_KEY);
+  try { await chrome.storage.session.set({ 'clawline-api-key': API_KEY }); } catch (e) { console.warn('[clawline] api key save failed:', e); }
   settingsPanel.style.display = 'none';
   setStatus('Settings saved'); setTimeout(() => setStatus(''), 1500);
 });
 
 document.getElementById('cfg-cancel').addEventListener('click', () => {
   settingsPanel.style.display = 'none';
+});
+
+// Export history
+document.getElementById('cfg-export').addEventListener('click', () => {
+  const data = { conversations: allConversations, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `clawline-history-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus('History exported'); setTimeout(() => setStatus(''), 1500);
+});
+
+// Import history
+document.getElementById('cfg-import-btn').addEventListener('click', () => {
+  document.getElementById('cfg-import-file').click();
+});
+document.getElementById('cfg-import-file').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const convs = data.conversations;
+    if (!convs || typeof convs !== 'object') throw new Error('Invalid format');
+    let count = 0;
+    for (const [id, conv] of Object.entries(convs)) {
+      if (!allConversations[id]) {
+        allConversations[id] = conv;
+        count++;
+      }
+    }
+    saveConversations();
+    renderConversationList();
+    setStatus(`Imported ${count} conversations`); setTimeout(() => setStatus(''), 2000);
+  } catch (err) {
+    setStatus(`Import failed: ${err.message}`); setTimeout(() => setStatus(''), 3000);
+  }
+  e.target.value = '';
 });
 
 modelSelect.addEventListener('change', () => localStorage.setItem('clawline-model', modelSelect.value));
@@ -515,6 +693,7 @@ fastToggle.addEventListener('click', () => {
 });
 document.getElementById('history-btn').addEventListener('click', () => sidebar.classList.toggle('open'));
 document.getElementById('sidebar-close').addEventListener('click', () => sidebar.classList.remove('open'));
+document.getElementById('sidebar-backdrop').addEventListener('click', () => sidebar.classList.remove('open'));
 
 function getModel() { return fastMode ? FAST_MODEL : modelSelect.value; }
 
@@ -523,59 +702,22 @@ function getModel() { return fastMode ? FAST_MODEL : modelSelect.value; }
 const TOOLS = [
   { name: 'read_page', description: 'Get accessibility tree of page elements with ref_IDs. Use filter="interactive" for only buttons/links/inputs. Use ref_id to focus on a specific element subtree.', input_schema: { type: 'object', properties: { filter: { type: 'string', enum: ['interactive', 'all'], description: 'Filter: "interactive" for buttons/links/inputs only, "all" for all elements (default)' }, depth: { type: 'number', description: 'Max tree depth (default: 15)' }, ref_id: { type: 'string', description: 'Focus on a specific element by ref_ID' }, max_chars: { type: 'number', description: 'Max output chars (default: 15000)' } } } },
   { name: 'find', description: 'Find elements by natural language query. Returns up to 20 matching elements with ref_IDs. E.g. "search bar", "login button", "product title containing organic".', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Natural language description of what to find' } }, required: ['query'] } },
-  { name: 'form_input', description: 'Set form element values by ref_ID. For checkboxes use boolean, for selects use option value/text, for inputs use string.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'Element ref_ID from read_page (e.g. "ref_1")' }, value: { type: ['string', 'boolean', 'number'], description: 'Value to set' } }, required: ['ref', 'value'] } },
-  { name: 'computer', description: 'Mouse, keyboard, and screenshot actions. Always take a screenshot first to see coordinates before clicking. Click element centers, not edges.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['left_click', 'right_click', 'type', 'screenshot', 'wait', 'scroll', 'key', 'left_click_drag', 'double_click', 'triple_click', 'zoom', 'scroll_to', 'hover'], description: 'Action to perform. zoom: capture a specific region for closer inspection. scroll_to: scroll element into view by ref.' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x, y] pixel coordinates. For drag, this is the end position.' }, text: { type: 'string', description: 'Text to type (for type action) or keys to press (for key action, e.g. "cmd+a", "Backspace")' }, duration: { type: 'number', description: 'Seconds to wait (for wait action, max 10)' }, scroll_direction: { type: 'string', enum: ['up', 'down', 'left', 'right'], description: 'Scroll direction' }, scroll_amount: { type: 'number', description: 'Scroll ticks (default 3)' }, start_coordinate: { type: 'array', items: { type: 'number' }, description: 'Start [x,y] for drag' }, region: { type: 'array', items: { type: 'number' }, description: '[x0, y0, x1, y1] rectangle to capture for zoom action' }, repeat: { type: 'number', description: 'Times to repeat key sequence (for key action, default 1)' }, ref: { type: 'string', description: 'Element ref_ID — alternative to coordinate for click/scroll_to' }, modifiers: { type: 'string', description: 'Modifier keys: "ctrl", "shift", "alt", "cmd". Combine with "+" (e.g. "ctrl+shift")' } }, required: ['action'] } },
-  { name: 'navigate', description: 'Navigate to a URL, or use "back"/"forward" for browser history.', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'URL to navigate to, or "back"/"forward" for history' } }, required: ['url'] } },
+  { name: 'form_input', description: 'Set a single form element value by ref_ID. For checkboxes use boolean, for selects use option value/text, for inputs use string. Prefer batch_form_input when setting multiple fields.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'Element ref_ID from read_page (e.g. "ref_1")' }, value: { type: ['string', 'boolean', 'number'], description: 'Value to set' } }, required: ['ref', 'value'] } },
+  { name: 'batch_form_input', description: 'Set multiple form fields at once in a single call. Much faster than calling form_input repeatedly. Use this whenever you need to fill 2+ fields. You may take ONE screenshot after all fields are set to verify the overall result.', input_schema: { type: 'object', properties: { fields: { type: 'array', items: { type: 'object', properties: { ref: { type: 'string', description: 'Element ref_ID' }, value: { type: ['string', 'boolean', 'number'], description: 'Value to set' } }, required: ['ref', 'value'] }, description: 'Array of {ref, value} pairs to set' }, click_after: { type: 'string', description: 'Optional ref_ID to click after all fields are set (e.g. submit button)' } }, required: ['fields'] } },
+  { name: 'computer', description: 'Mouse, keyboard, and screenshot actions. Always take a screenshot first to see coordinates before clicking. Click element centers, not edges. After click, optionally pass wait_for=load|selector|none to settle before next step (QA-critical).', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['left_click', 'right_click', 'type', 'screenshot', 'wait', 'scroll', 'key', 'left_click_drag', 'double_click', 'triple_click', 'zoom', 'scroll_to', 'hover'], description: 'Action to perform. zoom: capture a specific region for closer inspection. scroll_to: scroll element into view by ref.' }, coordinate: { type: 'array', items: { type: 'number' }, description: '[x, y] pixel coordinates. For drag, this is the end position.' }, text: { type: 'string', description: 'Text to type (for type action) or keys to press (for key action, e.g. "cmd+a", "Backspace")' }, duration: { type: 'number', description: 'Seconds to wait (for wait action, max 10)' }, scroll_direction: { type: 'string', enum: ['up', 'down', 'left', 'right'], description: 'Scroll direction' }, scroll_amount: { type: 'number', description: 'Scroll ticks (default 3)' }, start_coordinate: { type: 'array', items: { type: 'number' }, description: 'Start [x,y] for drag' }, region: { type: 'array', items: { type: 'number' }, description: '[x0, y0, x1, y1] rectangle to capture for zoom action' }, repeat: { type: 'number', description: 'Times to repeat key sequence (for key action, default 1)' }, ref: { type: 'string', description: 'Element ref_ID — alternative to coordinate for click/scroll_to' }, modifiers: { type: 'string', description: 'Modifier keys: "ctrl", "shift", "alt", "cmd". Combine with "+" (e.g. "ctrl+shift")' }, wait_for: { type: 'string', enum: ['load', 'selector', 'none'], description: 'After click: wait for page to settle. "load"=tabs.onUpdated complete; "selector"=requires wait_for_selector; "none"=skip.' }, wait_for_selector: { type: 'string', description: 'CSS selector to wait for when wait_for="selector"' }, wait_timeout: { type: 'number', description: 'Wait timeout in seconds (default 8, max 30)' } }, required: ['action'] } },
+  { name: 'navigate', description: 'Navigate to a URL, or use "back"/"forward" for browser history. Defaults to wait_for=load (tab status complete).', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'URL to navigate to (http/https only), or "back"/"forward" for history' }, wait_for: { type: 'string', enum: ['load', 'selector', 'none'], description: 'Settle condition (default "load")' }, wait_for_selector: { type: 'string', description: 'CSS selector for wait_for="selector"' }, wait_timeout: { type: 'number', description: 'Wait timeout in seconds (default 10, max 30)' } }, required: ['url'] } },
   { name: 'get_page_text', description: 'Extract raw text content from the page. Ideal for reading articles, blog posts, or text-heavy pages. Returns plain text without HTML.', input_schema: { type: 'object', properties: { max_chars: { type: 'number', description: 'Max chars (default: 15000)' } } } },
   { name: 'tabs_create', description: 'Create a new empty browser tab.', input_schema: { type: 'object', properties: {} } },
   { name: 'tabs_context', description: 'Get list of all open browser tabs with their IDs, titles, and URLs.', input_schema: { type: 'object', properties: {} } },
   { name: 'read_console_messages', description: 'Read browser console messages (console.log/error/warn). Use pattern to filter. Useful for debugging.', input_schema: { type: 'object', properties: { onlyErrors: { type: 'boolean', description: 'Only return errors (default: false)' }, pattern: { type: 'string', description: 'Regex pattern to filter messages' }, limit: { type: 'number', description: 'Max messages (default: 100)' }, clear: { type: 'boolean', description: 'Clear after reading (default: false)' } } } },
   { name: 'read_network_requests', description: 'Read HTTP network requests (XHR, Fetch, etc). Useful for debugging API calls.', input_schema: { type: 'object', properties: { urlPattern: { type: 'string', description: 'URL pattern to filter (e.g. "/api/")' }, limit: { type: 'number', description: 'Max requests (default: 100)' }, clear: { type: 'boolean', description: 'Clear after reading (default: false)' } } } },
   { name: 'resize_window', description: 'Resize browser window to specific dimensions. Useful for responsive testing.', input_schema: { type: 'object', properties: { width: { type: 'number' }, height: { type: 'number' } }, required: ['width', 'height'] } },
+  { name: 'emulate_device', description: 'Emulate a mobile device or reset to desktop. Sets viewport size, device pixel ratio, user agent, and touch support via CDP. Use preset names or custom values.', input_schema: { type: 'object', properties: { preset: { type: 'string', enum: ['iPhone 14', 'iPhone 14 Pro Max', 'iPhone SE', 'iPad', 'iPad Pro', 'Pixel 7', 'Galaxy S23', 'desktop'], description: 'Device preset name, or "desktop" to reset' }, width: { type: 'number', description: 'Custom viewport width (overrides preset)' }, height: { type: 'number', description: 'Custom viewport height (overrides preset)' }, deviceScaleFactor: { type: 'number', description: 'Device pixel ratio (default from preset)' }, mobile: { type: 'boolean', description: 'Enable mobile mode (default from preset)' } } } },
   { name: 'javascript_tool', description: 'Execute JavaScript in the page context. Returns result of last expression. Do NOT use "return" — just write the expression.', input_schema: { type: 'object', properties: { action: { type: 'string', description: 'Must be "javascript_exec"' }, text: { type: 'string', description: 'JavaScript code to execute' } }, required: ['action', 'text'] } },
   { name: 'file_upload', description: 'Upload files to a file input element. Do NOT click file inputs — use this tool with the ref_ID instead. Paths must be absolute.', input_schema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths to upload' }, ref: { type: 'string', description: 'ref_ID of the file input element' } }, required: ['paths', 'ref'] } },
   { name: 'update_plan', description: 'Present a plan to the user before proceeding with complex tasks.', input_schema: { type: 'object', properties: { domains: { type: 'array', items: { type: 'string' }, description: 'Domains to visit' }, approach: { type: 'array', items: { type: 'string' }, description: 'Ordered steps (3-7)' } }, required: ['domains', 'approach'] } },
   { name: 'turn_answer_start', description: 'Call this immediately before your text response to the user for this turn. Required every turn - whether or not you made tool calls. After calling, write your response. No more tools after this.', input_schema: { type: 'object', properties: {}, required: [] }, cache_control: { type: 'ephemeral' } },
 ];
-
-// ── Skill Modes ──
-
-const SKILL_MODES = {
-  general: {
-    label: 'General',
-    instructions: `- Be concise. Focus on completing the task, not explaining your process.
-- Handle errors gracefully — try alternatives when one approach fails.
-- You may investigate issues using console, network, and JS tools when needed.
-- Balance between completing the task efficiently and being thorough.
-- For forms: read_page → identify fields → form_input by ref → click submit.`,
-  },
-  qa: {
-    label: 'QA Test',
-    instructions: `- You are a QA tester. ONLY execute steps and report results.
-- Follow numbered steps EXACTLY in order. Do NOT skip, reorder, or add steps.
-- If a step fails, record "FAIL — [what you see]" and move to the next step.
-- NEVER debug or investigate on your own. Do NOT check network requests, console logs, or DOM internals unless the user explicitly asks you to.
-- Do NOT retry a failed step more than once. Move on.
-- Your job is to EXECUTE and REPORT, not to ANALYZE or FIX.
-- Report format: PASS or FAIL with brief description.
-- Limit yourself to the tools and actions the user's steps require. Do not use extra tools to "understand" the situation.`,
-  },
-  scraper: {
-    label: 'Scraper',
-    instructions: `- You are a data extraction specialist. Focus on getting the requested data.
-- If a page doesn't load or blocks you, try alternatives: different selectors, scroll, wait, or JavaScript extraction.
-- Structure extracted data clearly using tables, lists, or JSON format.
-- Handle pagination automatically — keep extracting until all pages are done.
-- Skip non-essential content (ads, navigation, footers, cookie banners).
-- Be resilient: if one approach fails, try another without asking the user.`,
-  },
-  custom: {
-    label: 'Custom',
-    instructions: '', // filled from localStorage
-  },
-};
-
-let currentSkillMode = 'general';
 
 // ── System Prompt ──
 
@@ -626,7 +768,7 @@ CRITICAL RULES for efficient browser automation:
 
 4. For complex web apps (Google Docs, Figma, Canva) where read_page returns no meaningful content, use screenshots instead.
 
-5. Use form_input to set values in input fields, selects, checkboxes — it's faster and more reliable than computer type.
+5. Use batch_form_input to set multiple form fields at once — it's much faster than calling form_input one by one. Only use form_input for a single field. After batch filling, you may take ONE screenshot to verify the overall result — but do NOT screenshot after each individual field.
 
 6. After completing tool calls, provide a brief summary to the user. Don't repeat information already visible.
 
@@ -644,6 +786,11 @@ CRITICAL RULES for efficient browser automation:
 - After clicking/typing, trust the tool result. Only screenshot if you need to see VISUAL changes.
 </efficiency_rules>
 
+<output_formatting>
+- Do NOT use emoji characters (🔴✅❌🟢 etc.) in your responses. Use plain text symbols instead: ✓ for success/pass, ✗ for failure/fail, • for bullet points, → for arrows.
+- Keep your responses clean and professional.
+</output_formatting>
+
 <behavior_instructions>
 The current date is ${new Date().toLocaleDateString()}.
 Current mode: ${mode.label}.
@@ -655,7 +802,7 @@ ${behaviorText}
 1. See page structure: read_page (filter="interactive" first, "all" only if needed)
 2. Find specific elements: find("search button") → get ref_IDs
 3. Click elements: computer left_click with ref="ref_1" (preferred) or coordinate=[x,y]
-4. Fill forms: form_input with ref="ref_1" and value="text"
+4. Fill forms: batch_form_input with fields=[{ref, value}, ...] and optional click_after for submit
 5. Navigate: navigate with url, or "back"/"forward"
 6. Read content: get_page_text for articles, read_page for structure
 7. Debug: read_console_messages, read_network_requests, javascript_tool
@@ -764,17 +911,20 @@ function renderMarkdown(text) {
     .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
     .replace(/^---$/gm, '<hr>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
-      const safe = /^https?:\/\//.test(url) ? url : '#';
-      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+      const safe = /^https?:\/\//i.test(url) ? url : '#';
+      return `<a href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     });
 
-  // Convert list items (keep consecutive items together)
-  processed = processed.replace(/^- (.+)$/gm, '<li>$1</li>');
-  processed = processed.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Convert list items — mark source type for correct wrapping
+  processed = processed.replace(/^- (.+)$/gm, '<li data-ul>$1</li>');
+  processed = processed.replace(/^\d+\. (.+)$/gm, '<li data-ol>$1</li>');
 
-  // Wrap consecutive <li> into <ul>, handling newlines between them
-  processed = processed.replace(/((?:<li>.*?<\/li>\s*)+)/g, (match) => {
-    return '<ul>' + match.replace(/\s*(<li>)/g, '$1').replace(/(<\/li>)\s*/g, '$1') + '</ul>';
+  // Wrap consecutive <li> into <ul> or <ol> based on first item type
+  processed = processed.replace(/((?:<li data-(?:ul|ol)>.*?<\/li>\s*)+)/g, (match) => {
+    const isOrdered = match.trimStart().startsWith('<li data-ol>');
+    const tag = isOrdered ? 'ol' : 'ul';
+    const cleaned = match.replace(/\s*(<li) data-(?:ul|ol)>/g, '$1>').replace(/(<\/li>)\s*/g, '$1');
+    return `<${tag}>${cleaned}</${tag}>`;
   });
 
   // Split into paragraphs by double newline
@@ -798,7 +948,8 @@ function renderMarkdown(text) {
   final = final.replace(/(<(ul|ol|table|blockquote|pre|h[1-6]|hr)[^>]*>)\s*<br>/g, '$1');
   final = final.replace(/<p>\s*<\/p>/g, '');
 
-  return final;
+  // Security: sanitize via DOM allowlist (defense-in-depth over regex-only filtering)
+  return sanitizeHtml(final);
 }
 
 // ── Message Display ──
@@ -905,7 +1056,7 @@ function addToolCall(name, args) {
     const labels = { screenshot: 'Take screenshot', left_click: 'Click', right_click: 'Right click', double_click: 'Double click', triple_click: 'Triple click', type: 'Type', key: 'Key press', scroll: 'Scroll', hover: 'Hover', wait: `Wait ${args?.duration || 2}s`, left_click_drag: 'Drag' };
     label = labels[action] || action || 'Computer';
   } else {
-    const labels = { read_page: `Read page${args?.filter === 'interactive' ? ' (interactive)' : ''}`, find: `Find "${(args?.query || '').slice(0, 25)}"`, form_input: `Set ${args?.ref}`, navigate: 'Navigate', get_page_text: 'Get page text', javascript_tool: 'JavaScript', tabs_create: 'Create tab', tabs_context: 'Tab context', read_console_messages: 'Console', read_network_requests: 'Network', resize_window: 'Resize', file_upload: 'Upload file', update_plan: 'Update plan' };
+    const labels = { read_page: `Read page${args?.filter === 'interactive' ? ' (interactive)' : ''}`, find: `Find "${(args?.query || '').slice(0, 25)}"`, form_input: `Set ${args?.ref}`, batch_form_input: `Batch set ${args?.fields?.length || 0} fields`, navigate: 'Navigate', get_page_text: 'Get page text', javascript_tool: 'JavaScript', tabs_create: 'Create tab', tabs_context: 'Tab context', read_console_messages: 'Console', read_network_requests: 'Network', resize_window: 'Resize', emulate_device: `Emulate ${args?.preset || 'device'}`, file_upload: 'Upload file', update_plan: 'Update plan' };
     label = labels[name] || name.replace(/_/g, ' ');
   }
   row.innerHTML = `<span class="tool-step-label">${escapeHtml(label)}</span>`;
@@ -1029,13 +1180,40 @@ function scaleCoordinate(x, y) {
 
 let debuggerTabId = null;
 let _debuggerEventListener = null;
+let _ensureDebuggerLock = null;
 
 // Auto-clear debuggerTabId when browser detaches debugger (e.g. user opens DevTools)
 chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId === debuggerTabId) debuggerTabId = null;
 });
 
+// If the tab or window hosting the debugger target goes away, drop our reference
+// so we don't try to send CDP commands to a dead tab (silent-hang, stale banner).
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === debuggerTabId) debuggerTabId = null;
+  if (tabId === lockedTabId) lockedTabId = null;
+});
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === currentWindowId) currentWindowId = null;
+});
+// Detach debugger when the sidepanel unloads (closed, reloaded) — otherwise the
+// "Clawline started debugging this browser" banner lingers until Chrome exits.
+window.addEventListener('pagehide', () => { try { if (debuggerTabId) chrome.debugger.detach({ tabId: debuggerTabId }); } catch {} });
+
 async function ensureDebugger(tabId) {
+  // Mutex: serialize concurrent calls
+  while (_ensureDebuggerLock) await _ensureDebuggerLock;
+  let unlock;
+  _ensureDebuggerLock = new Promise(r => { unlock = r; });
+  try {
+    await _ensureDebuggerInner(tabId);
+  } finally {
+    _ensureDebuggerLock = null;
+    unlock();
+  }
+}
+
+async function _ensureDebuggerInner(tabId) {
   if (debuggerTabId === tabId) return;
   if (debuggerTabId) { try { await chrome.debugger.detach({ tabId: debuggerTabId }); } catch {} debuggerTabId = null; }
   // Remove previous debugger event listener to prevent leaks
@@ -1047,6 +1225,7 @@ async function ensureDebugger(tabId) {
     await chrome.debugger.attach({ tabId }, '1.3');
     debuggerTabId = tabId;
     window.__clawlineNetworkEnabled = false; // Force re-enable Network on new tab
+    window.__clawlineNetworkRequests = new Map(); // Clear stale data from previous tab
   } catch (e) {
     debuggerTabId = null;
     throw new Error(`Cannot attach debugger to tab ${tabId}: ${e.message}`);
@@ -1059,10 +1238,60 @@ async function releaseDebugger() {
 
 async function cdp(method, params) {
   if (!debuggerTabId) throw new Error('Debugger not attached');
-  return Promise.race([
-    chrome.debugger.sendCommand({ tabId: debuggerTabId }, method, params),
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`CDP timeout: ${method}`)), 30000)),
-  ]);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`CDP timeout: ${method}`)), 30000);
+    chrome.debugger.sendCommand({ tabId: debuggerTabId }, method, params)
+      .then(result => { clearTimeout(timer); resolve(result); })
+      .catch(err => { clearTimeout(timer); reject(err); });
+  });
+}
+
+// ── Wait / settle helpers (QA reliability) ──
+// All helpers return a short string reason ('load'|'idle'|'found'|'timeout'|...)
+// and never throw — callers should treat 'timeout' as a soft signal, not an error.
+
+function _waitForLoadComplete(tabId, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (reason) => { if (done) return; done = true; chrome.tabs.onUpdated.removeListener(listener); clearTimeout(t); resolve(reason); };
+    const listener = (id, info) => { if (id === tabId && info.status === 'complete') finish('load'); };
+    const t = setTimeout(() => finish('timeout'), timeoutMs);
+    chrome.tabs.onUpdated.addListener(listener);
+    // Already complete? Resolve immediately.
+    chrome.tabs.get(tabId).then(tab => { if (tab.status === 'complete') finish('already-complete'); }).catch(() => {});
+  });
+}
+
+async function _waitForSelector(tabId, selector, timeoutMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (abortController?.signal.aborted) return 'aborted';
+    try {
+      const r = await chrome.scripting.executeScript({ target: { tabId }, func: (s) => !!document.querySelector(s), args: [selector] });
+      if (r?.[0]?.result) return 'found';
+    } catch {}
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return 'timeout';
+}
+
+async function waitForSettle(tabId, opts = {}) {
+  const { condition = 'load', selector, timeout = 8000 } = opts;
+  if (condition === 'none') return 'skipped';
+  if (condition === 'selector') {
+    if (!selector) return 'no-selector';
+    return _waitForSelector(tabId, selector, timeout);
+  }
+  return _waitForLoadComplete(tabId, timeout);
+}
+
+// Optional post-action settle: only runs if the tool call set `wait_for`.
+// Returns a short string suffix to append to the result text, or '' if no wait.
+async function postActionWait(tabId, args) {
+  if (!args?.wait_for) return '';
+  const timeout = Math.min(args.wait_timeout || 8, 30) * 1000;
+  const reason = await waitForSettle(tabId, { condition: args.wait_for, selector: args.wait_for_selector, timeout });
+  return ` [wait_for=${args.wait_for}:${reason}]`;
 }
 
 // ── Tool Execution ──
@@ -1095,14 +1324,93 @@ async function getTargetTab() {
 
 async function injectContentScript(tabId) {
   try { await chrome.scripting.executeScript({ target: { tabId }, files: ['content-script.js'] }); } catch {}
+  // Install ref resolver that adds a stable-selector fallback over the WeakRef
+  // map. Without it, any DOM re-render (SPA virtual list, Vue key rotation, GC)
+  // permanently invalidates refs and the agent has to re-read the page.
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, func: () => {
+      if (window.__clawlineResolveRef) return;
+      window.__clawlineSelectorCache = window.__clawlineSelectorCache || {};
+      const _esc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, c => '\\' + c);
+      function buildSelector(el) {
+        if (!el || el.nodeType !== 1) return null;
+        if (el.id) {
+          const sel = '#' + _esc(el.id);
+          try { if (document.querySelector(sel) === el) return sel; } catch {}
+        }
+        const tid = el.getAttribute('data-testid') || el.getAttribute('data-test-id') || el.getAttribute('data-cy');
+        if (tid) {
+          const sel = `[data-testid="${tid.replace(/"/g, '\\"')}"]`;
+          try { if (document.querySelector(sel) === el) return sel; } catch {}
+        }
+        const al = el.getAttribute('aria-label');
+        if (al && al.length < 80) {
+          const sel = `${el.tagName.toLowerCase()}[aria-label="${al.replace(/"/g, '\\"')}"]`;
+          try { if (document.querySelector(sel) === el) return sel; } catch {}
+        }
+        const name = el.getAttribute('name');
+        if (name && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) {
+          const sel = `${el.tagName.toLowerCase()}[name="${name.replace(/"/g, '\\"')}"]`;
+          try { if (document.querySelector(sel) === el) return sel; } catch {}
+        }
+        // nth-of-type path, anchored to nearest ancestor with id (or to body).
+        const path = [];
+        let cur = el, depth = 0;
+        while (cur && cur.nodeType === 1 && cur !== document.body && depth < 8) {
+          let sib = cur, n = 1;
+          while ((sib = sib.previousElementSibling)) { if (sib.tagName === cur.tagName) n++; }
+          path.unshift(`${cur.tagName.toLowerCase()}:nth-of-type(${n})`);
+          if (cur.parentElement?.id) { path.unshift('#' + _esc(cur.parentElement.id)); break; }
+          cur = cur.parentElement;
+          depth++;
+        }
+        if (!path.length) return null;
+        const sel = path.join(' > ');
+        try { if (document.querySelector(sel) === el) return sel; } catch {}
+        return null;
+      }
+      window.__clawlineRememberSelector = (refId, el) => {
+        if (!el) return;
+        const sel = buildSelector(el);
+        if (sel) window.__clawlineSelectorCache[refId] = sel;
+      };
+      window.__clawlineResolveRef = (refId) => {
+        const map = window.__clawlineElementMap || (window.__clawlineElementMap = {});
+        const wref = map[refId];
+        const live = wref ? wref.deref() : null;
+        if (live && document.contains(live)) {
+          window.__clawlineRememberSelector(refId, live);
+          return live;
+        }
+        const sel = window.__clawlineSelectorCache[refId];
+        if (sel) {
+          try {
+            const found = document.querySelector(sel);
+            if (found) { map[refId] = new WeakRef(found); return found; }
+          } catch {}
+        }
+        return null;
+      };
+      // Pre-cache selectors for all currently-mapped refs (typically populated
+      // by the most recent read_page) so the fallback is ready before the
+      // first ref-using tool runs.
+      const map = window.__clawlineElementMap || {};
+      for (const refId of Object.keys(map)) {
+        const el = map[refId]?.deref?.();
+        if (el && document.contains(el)) window.__clawlineRememberSelector(refId, el);
+      }
+    }});
+  } catch {}
 }
 
 async function executeTool(name, args) {
   // Global timeout: if any tool takes over 60s, abort with error
-  return Promise.race([
-    _executeTool(name, args),
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`Tool "${name}" timed out after 60s`)), 60000)),
-  ]);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Tool "${name}" timed out after 60s`)), 60000);
+    _executeTool(name, args)
+      .then(result => { clearTimeout(timer); resolve(result); })
+      .catch(err => { clearTimeout(timer); reject(err); });
+  });
 }
 
 async function _executeTool(name, args) {
@@ -1128,17 +1436,19 @@ async function _executeTool(name, args) {
         return { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: result.data } }] };
       }
       if (action === 'wait') {
-        await new Promise(r => setTimeout(r, (args.duration || 2) * 1000));
-        return { content: [{ type: 'text', text: `Waited ${args.duration || 2}s` }] };
+        const duration = Math.min(args.duration || 2, 10);
+        await new Promise(r => setTimeout(r, duration * 1000));
+        return { content: [{ type: 'text', text: `Waited ${duration}s` }] };
       }
       if (['left_click', 'right_click', 'double_click', 'triple_click'].includes(action)) {
         if (args.ref) {
           await injectContentScript(tabId);
           const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId, action) => {
-            const map = window.__clawlineElementMap;
-            if (!map?.[refId]) return { error: `Element ${refId} not found.` };
-            const el = map[refId].deref();
-            if (!el || !document.contains(el)) { delete map[refId]; return { error: `Element ${refId} no longer exists.` }; }
+            const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(refId) : (window.__clawlineElementMap?.[refId]?.deref() || null);
+            if (!el || !document.contains(el)) {
+              if (window.__clawlineElementMap) delete window.__clawlineElementMap[refId];
+              return { error: `Element ${refId} no longer exists. Re-run read_page to refresh element refs.` };
+            }
             el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
             const rect = el.getBoundingClientRect();
             const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
@@ -1155,7 +1465,8 @@ async function _executeTool(name, args) {
             await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
             await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
           }
-          return { content: [{ type: 'text', text: `Clicked ${args.ref} <${r?.tag}> "${r?.text}"` }] };
+          const waitInfo = await postActionWait(tabId, args);
+          return { content: [{ type: 'text', text: `Clicked ${args.ref} <${r?.tag}> "${r?.text}"${waitInfo}` }] };
         }
         if (!args.coordinate) return { content: [{ type: 'text', text: 'Click requires either ref or coordinate parameter' }] };
         const [x, y] = scaleCoordinate(...args.coordinate);
@@ -1164,7 +1475,8 @@ async function _executeTool(name, args) {
         await ensureDebugger(tabId);
         await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
         await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
-        return { content: [{ type: 'text', text: `Clicked [${x},${y}]` }] };
+        const waitInfo = await postActionWait(tabId, args);
+        return { content: [{ type: 'text', text: `Clicked [${x},${y}]${waitInfo}` }] };
       }
       if (action === 'type') {
         await ensureDebugger(tabId);
@@ -1175,31 +1487,50 @@ async function _executeTool(name, args) {
         await ensureDebugger(tabId);
         const keys = args.text.split(' ');
         const repeat = args.repeat || 1;
+        // Extended keycode map covers function keys, navigation, and editing keys
+        // that the previous charCodeAt fallback got wrong.
+        const namedKey = {
+          Enter: 13, Return: 13, Tab: 9, Escape: 27, Esc: 27, Backspace: 8, Space: 32,
+          Delete: 46, Insert: 45, Home: 36, End: 35, PageUp: 33, PageDown: 34,
+          ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
+          F1: 112, F2: 113, F3: 114, F4: 115, F5: 116, F6: 117,
+          F7: 118, F8: 119, F9: 120, F10: 121, F11: 122, F12: 123,
+        };
+        const keyCode = (k) => namedKey[k] != null ? namedKey[k] : k.toUpperCase().charCodeAt(0);
         for (let r = 0; r < repeat; r++) {
           for (const k of keys) {
             if (k.includes('+')) {
-              // Key combo
               const parts = k.split('+');
               const modMap = { ctrl: 'Control', cmd: 'Meta', meta: 'Meta', alt: 'Alt', shift: 'Shift' };
-              const codeMap = { a: 65, c: 67, v: 86, x: 88, z: 90 };
               const mods = parts.slice(0, -1);
               const main = parts[parts.length - 1];
               let modBits = 0;
               for (const m of mods) { if (m === 'alt') modBits |= 1; if (m === 'ctrl') modBits |= 2; if (m === 'meta' || m === 'cmd') modBits |= 4; if (m === 'shift') modBits |= 8; }
-              for (const m of mods) await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: modMap[m] || m, modifiers: modBits });
-              const vk = codeMap[main] || main.toUpperCase().charCodeAt(0);
-              await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
-              await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
-              for (const m of mods.reverse()) await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: modMap[m] || m });
+              const pressedMods = [];
+              try {
+                for (const m of mods) {
+                  await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: modMap[m] || m, modifiers: modBits });
+                  pressedMods.push(m);
+                }
+                const vk = keyCode(main);
+                await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
+                await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
+              } finally {
+                // Always release modifiers, even if the main key dispatch threw —
+                // otherwise the page is stuck with Ctrl/Shift held until reload.
+                for (const m of pressedMods.reverse()) {
+                  try { await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: modMap[m] || m }); } catch {}
+                }
+              }
             } else {
-              const map = { Enter: 13, Return: 13, Tab: 9, Escape: 27, Backspace: 8, Space: 32, Delete: 46, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
-              const code = map[k] || k.charCodeAt(0);
+              const code = keyCode(k);
               await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: k, windowsVirtualKeyCode: code });
               await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: k, windowsVirtualKeyCode: code });
             }
           }
         }
-        return { content: [{ type: 'text', text: `Key: ${args.text}${(args.repeat || 1) > 1 ? ` x${args.repeat}` : ''}` }] };
+        const waitInfo = await postActionWait(tabId, args);
+        return { content: [{ type: 'text', text: `Key: ${args.text}${(args.repeat || 1) > 1 ? ` x${args.repeat}` : ''}${waitInfo}` }] };
       }
       if (action === 'scroll') {
         const [x, y] = args.coordinate ? scaleCoordinate(...args.coordinate) : [400, 400];
@@ -1215,8 +1546,8 @@ async function _executeTool(name, args) {
         if (args.ref) {
           await injectContentScript(tabId);
           const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
-            const el = window.__clawlineElementMap?.[refId]?.deref();
-            if (!el) return { error: `Element ${refId} not found` };
+            const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(refId) : (window.__clawlineElementMap?.[refId]?.deref() || null);
+            if (!el) return { error: `Element ${refId} not found. Re-run read_page to refresh element refs.` };
             el.scrollIntoView({ behavior: 'instant', block: 'center' });
             const rect = el.getBoundingClientRect();
             return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
@@ -1262,8 +1593,8 @@ async function _executeTool(name, args) {
         if (!args.ref) return { content: [{ type: 'text', text: 'scroll_to requires ref parameter' }] };
         await injectContentScript(tabId);
         const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
-          const el = window.__clawlineElementMap?.[refId]?.deref();
-          if (!el) return { error: `Element ${refId} not found` };
+          const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(refId) : (window.__clawlineElementMap?.[refId]?.deref() || null);
+          if (!el) return { error: `Element ${refId} not found. Re-run read_page to refresh element refs.` };
           el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
           return { success: true, tag: el.tagName };
         }, args: [args.ref] });
@@ -1318,6 +1649,7 @@ async function _executeTool(name, args) {
           let refId;
           for (const d in window.__clawlineElementMap) { if (window.__clawlineElementMap[d]?.deref() === el) { refId = d; break; } }
           if (!refId) { refId = 'ref_' + (++window.__clawlineRefCounter); window.__clawlineElementMap[refId] = new WeakRef(el); }
+          if (window.__clawlineRememberSelector) window.__clawlineRememberSelector(refId, el);
           const rect = el.getBoundingClientRect();
           matches.push({ ref: refId, tag: el.tagName.toLowerCase(), text: text.slice(0, 60), label: label.slice(0, 40), visible: rect.width > 0 && rect.height > 0 });
           if (matches.length >= 20) break;
@@ -1333,22 +1665,24 @@ async function _executeTool(name, args) {
     case 'form_input': {
       await injectContentScript(tabId);
       const results = await chrome.scripting.executeScript({ target: { tabId }, func: (ref, value) => {
-        const map = window.__clawlineElementMap;
-        if (!map?.[ref]) return { error: `Element ${ref} not found.` };
-        const el = map[ref].deref();
-        if (!el || !document.contains(el)) { delete map[ref]; return { error: `Element ${ref} no longer exists.` }; }
+        const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(ref) : (window.__clawlineElementMap?.[ref]?.deref() || null);
+        if (!el || !document.contains(el)) {
+          if (window.__clawlineElementMap) delete window.__clawlineElementMap[ref];
+          return { error: `Element ${ref} no longer exists. Re-run read_page to refresh element refs.` };
+        }
         el.scrollIntoView({ behavior: 'instant', block: 'center' });
         el.focus();
         const tag = el.tagName.toLowerCase();
         if (tag === 'select') {
           const opts = Array.from(el.options);
           const opt = opts.find(o => o.value === String(value) || o.text.trim() === String(value));
-          if (opt) { el.value = opt.value; } else { el.value = String(value); }
+          if (!opt) return { error: `No option matching "${value}". Available: ${opts.map(o => o.value).slice(0, 10).join(', ')}` };
+          el.value = opt.value;
         } else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) {
           el.checked = !!value;
         } else if ('value' in el) {
           el.value = String(value);
-          el.setSelectionRange?.(el.value.length, el.value.length);
+          try { el.setSelectionRange?.(el.value.length, el.value.length); } catch {} // throws on date/time/number/range inputs
         } else if (el.isContentEditable) {
           el.textContent = String(value);
         }
@@ -1361,17 +1695,85 @@ async function _executeTool(name, args) {
       return { content: [{ type: 'text', text: `Set ${args.ref} <${r?.tag}> = "${r?.value}"` }] };
     }
 
+    case 'batch_form_input': {
+      await injectContentScript(tabId);
+      const fields = args.fields || [];
+      const results = await chrome.scripting.executeScript({ target: { tabId }, func: (fieldsArr) => {
+        const map = window.__clawlineElementMap;
+        if (!map) return { error: 'Element map not available. Use read_page first.' };
+        const outcomes = [];
+        for (const { ref, value } of fieldsArr) {
+          const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(ref) : (map[ref]?.deref() || null);
+          if (!el || !document.contains(el)) {
+            delete map[ref];
+            outcomes.push({ ref, error: `${ref} no longer exists. Re-run read_page to refresh element refs.` });
+            continue;
+          }
+          el.scrollIntoView({ behavior: 'instant', block: 'center' });
+          el.focus();
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'select') {
+            const opts = Array.from(el.options);
+            const opt = opts.find(o => o.value === String(value) || o.text.trim() === String(value));
+            if (!opt) {
+              outcomes.push({ ref, ok: false, error: `No option matching "${value}". Available: ${opts.map(o => o.value).slice(0, 10).join(', ')}` });
+              continue;
+            }
+            el.value = opt.value;
+          } else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) {
+            el.checked = !!value;
+          } else if ('value' in el) {
+            el.value = String(value);
+            try { el.setSelectionRange?.(el.value.length, el.value.length); } catch {} // throws on date/time/number/range inputs
+          } else if (el.isContentEditable) {
+            el.textContent = String(value);
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          outcomes.push({ ref, ok: true, tag, val: ('value' in el) ? el.value?.slice(0, 30) : String(value).slice(0, 30) });
+        }
+        return { outcomes };
+      }, args: [fields] });
+      const r = results?.[0]?.result;
+      if (r?.error) return { content: [{ type: 'text', text: r.error }] };
+      // Optionally click a button after filling
+      if (args.click_after) {
+        const clickResults = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
+          const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(refId) : (window.__clawlineElementMap?.[refId]?.deref() || null);
+          if (!el) return { error: `${refId} not found. Re-run read_page to refresh element refs.` };
+          el.scrollIntoView({ behavior: 'instant', block: 'center' });
+          el.click();
+          return { ok: true, tag: el.tagName, text: (el.textContent || '').slice(0, 30) };
+        }, args: [args.click_after] });
+        const cr = clickResults?.[0]?.result;
+        if (cr?.error) {
+          const summary = (r.outcomes || []).map(o => o.ok ? `${o.ref}="${o.val}"` : `${o.ref} FAIL`).join(', ');
+          return { content: [{ type: 'text', text: `Set ${summary}. Click ${args.click_after} failed: ${cr.error}` }] };
+        }
+      }
+      const summary = (r.outcomes || []).map(o => o.ok ? `${o.ref}="${o.val}"` : `${o.ref} FAIL: ${o.error}`).join(', ');
+      const clickNote = args.click_after ? ` → clicked ${args.click_after}` : '';
+      return { content: [{ type: 'text', text: `Batch set ${fields.length} fields: ${summary}${clickNote}` }] };
+    }
+
     case 'navigate': {
       const url = args.url;
+      // Whitelist protocols — block javascript:/data:/file: even from prompt-injected input.
+      const allowSpecial = url === 'back' || url === 'forward' || url === 'about:blank';
+      if (!allowSpecial) {
+        const normalized = url.startsWith('http') ? url : 'https://' + url;
+        if (!/^https?:\/\//i.test(normalized) && normalized !== 'about:blank') {
+          return { content: [{ type: 'text', text: `Refused: only http(s) URLs allowed, got: ${url}` }] };
+        }
+      }
       if (url === 'back') await chrome.tabs.goBack(tabId);
       else if (url === 'forward') await chrome.tabs.goForward(tabId);
       else await chrome.tabs.update(tabId, { url: url.startsWith('http') ? url : 'https://' + url });
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        try { const r = await chrome.scripting.executeScript({ target: { tabId }, func: () => document.readyState }); if (r?.[0]?.result === 'complete') break; } catch {}
-      }
+      const condition = args.wait_for || 'load';
+      const timeout = Math.min(args.wait_timeout || 10, 30) * 1000;
+      const reason = await waitForSettle(tabId, { condition, selector: args.wait_for_selector, timeout });
       const tab = await chrome.tabs.get(tabId);
-      return { content: [{ type: 'text', text: `Navigated to: ${tab.url}` }] };
+      return { content: [{ type: 'text', text: `Navigated to: ${tab.url} (${condition}=${reason})` }] };
     }
 
     case 'get_page_text': {
@@ -1426,83 +1828,71 @@ async function _executeTool(name, args) {
 
     case 'read_network_requests': {
       await ensureDebugger(tabId);
-      // Use CDP Network domain to capture all requests (including those before injection)
+      // Network capture state lives on window for cross-call persistence; the
+      // Map is keyed by CDP requestId so requests with the same URL don't
+      // collide, and entries evict in insertion order when the cap is hit.
+      const NET_MAX = 500;
       if (!window.__clawlineNetworkEnabled) {
-        window.__clawlineNetworkRequests = [];
+        window.__clawlineNetworkRequests = new Map();
         await cdp('Network.enable');
-        // Remove previous listener if any, then store new one
         if (_debuggerEventListener) {
           chrome.debugger.onEvent.removeListener(_debuggerEventListener);
         }
         _debuggerEventListener = (source, method, params) => {
           if (source.tabId !== debuggerTabId) return;
-          if (method === 'Network.responseReceived') {
-            const r = params.response;
-            window.__clawlineNetworkRequests.push({
-              url: r.url,
-              method: params.type === 'XHR' || params.type === 'Fetch' ? 'GET' : params.type,
-              status: r.status,
-              mimeType: r.mimeType,
+          const map = window.__clawlineNetworkRequests;
+          if (!map) return;
+          const evict = () => {
+            while (map.size > NET_MAX) {
+              const firstKey = map.keys().next().value;
+              if (firstKey === undefined) break;
+              map.delete(firstKey);
+            }
+          };
+          if (method === 'Network.requestWillBeSent' && params.requestId) {
+            map.set(params.requestId, {
+              id: params.requestId,
+              url: params.request.url,
+              method: params.request.method,
+              type: params.type,
+              status: 0,
               ts: Date.now(),
             });
-            if (window.__clawlineNetworkRequests.length > 500) window.__clawlineNetworkRequests.shift();
-          }
-          if (method === 'Network.requestWillBeSent') {
-            // Update method for the URL
-            const existing = window.__clawlineNetworkRequests?.find(r => r.url === params.request.url && r.method === params.type);
-            if (existing) existing.method = params.request.method;
-            else {
-              window.__clawlineNetworkRequests.push({
-                url: params.request.url,
-                method: params.request.method,
-                status: 0,
-                ts: Date.now(),
-              });
-              if (window.__clawlineNetworkRequests.length > 500) window.__clawlineNetworkRequests.shift();
+            evict();
+          } else if (method === 'Network.responseReceived' && params.requestId) {
+            const entry = map.get(params.requestId);
+            if (entry) {
+              entry.status = params.response.status;
+              entry.mimeType = params.response.mimeType;
+            }
+          } else if (method === 'Network.loadingFinished' && params.requestId) {
+            const entry = map.get(params.requestId);
+            if (entry) entry.duration = Date.now() - entry.ts;
+          } else if (method === 'Network.loadingFailed' && params.requestId) {
+            const entry = map.get(params.requestId);
+            if (entry) {
+              entry.status = 0;
+              entry.error = params.errorText || 'failed';
+              entry.duration = Date.now() - entry.ts;
+            } else {
+              map.set(params.requestId, { id: params.requestId, url: '?', method: '?', status: 0, error: params.errorText || 'failed', ts: Date.now() });
+              evict();
             }
           }
         };
         chrome.debugger.onEvent.addListener(_debuggerEventListener);
         window.__clawlineNetworkEnabled = true;
       }
-      // Also try the injected approach as fallback for requests made before CDP was enabled
-      let reqs = window.__clawlineNetworkRequests || [];
-      // Merge with content-script captured requests
-      try {
-        const results = await chrome.scripting.executeScript({ target: { tabId }, func: (urlPattern, limit) => {
-          if (!window.__clawlineNetReqs) {
-            window.__clawlineNetReqs = [];
-            const origFetch = window.fetch;
-            window.fetch = async function(...args) {
-              const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
-              const method = args[1]?.method || 'GET';
-              const start = Date.now();
-              try {
-                const res = await origFetch.apply(this, args);
-                window.__clawlineNetReqs.push({ url, method, status: res.status, duration: Date.now() - start, ts: start });
-                if (window.__clawlineNetReqs.length > 500) window.__clawlineNetReqs.shift();
-                return res;
-              } catch (e) {
-                window.__clawlineNetReqs.push({ url, method, status: 0, error: e.message, duration: Date.now() - start, ts: start });
-                throw e;
-              }
-            };
-          }
-          let r = window.__clawlineNetReqs || [];
-          if (urlPattern) r = r.filter(x => x.url.includes(urlPattern));
-          return r.slice(-(limit || 100));
-        }, args: [args.urlPattern || null, args.limit || 100] });
-        const csReqs = results?.[0]?.result || [];
-        // Merge: add CS requests not already in CDP list
-        const cdpUrls = new Set(reqs.map(r => r.url));
-        for (const r of csReqs) { if (!cdpUrls.has(r.url)) reqs.push(r); }
-      } catch {}
-
-      if (args.urlPattern) reqs = reqs.filter(r => r.url.includes(args.urlPattern));
+      let reqs = Array.from(window.__clawlineNetworkRequests?.values() || []);
+      if (args.urlPattern) reqs = reqs.filter(r => r.url?.includes(args.urlPattern));
       reqs = reqs.slice(-(args.limit || 100));
-      if (args.clear) { window.__clawlineNetworkRequests = []; }
+      if (args.clear) { window.__clawlineNetworkRequests?.clear(); }
       if (reqs.length === 0) return { content: [{ type: 'text', text: 'No network requests captured. Note: requests made before monitoring started cannot be captured.' }] };
-      const lines = reqs.map(r => `${r.method || '?'} ${r.status} ${r.url?.slice(0, 120)}${r.duration ? ` (${r.duration}ms)` : ''}`).join('\n');
+      const lines = reqs.map(r => {
+        const tag = r.error ? `ERR(${r.error})` : (r.status || 'pending');
+        const dur = r.duration != null ? ` (${r.duration}ms)` : '';
+        return `${r.method || '?'} ${tag} ${r.url?.slice(0, 120)}${dur}`;
+      }).join('\n');
       return { content: [{ type: 'text', text: `${reqs.length} requests:\n${lines}` }] };
     }
 
@@ -1510,6 +1900,48 @@ async function _executeTool(name, args) {
       const win = await chrome.windows.getCurrent();
       await chrome.windows.update(win.id, { width: args.width, height: args.height });
       return { content: [{ type: 'text', text: `Resized to ${args.width}x${args.height}` }] };
+    }
+
+    case 'emulate_device': {
+      const presets = {
+        'iPhone 14':          { width: 390, height: 844, deviceScaleFactor: 3, mobile: true, ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
+        'iPhone 14 Pro Max':  { width: 430, height: 932, deviceScaleFactor: 3, mobile: true, ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
+        'iPhone SE':          { width: 375, height: 667, deviceScaleFactor: 2, mobile: true, ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
+        'iPad':               { width: 810, height: 1080, deviceScaleFactor: 2, mobile: true, ua: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
+        'iPad Pro':           { width: 1024, height: 1366, deviceScaleFactor: 2, mobile: true, ua: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
+        'Pixel 7':            { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true, ua: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36' },
+        'Galaxy S23':         { width: 360, height: 780, deviceScaleFactor: 3, mobile: true, ua: 'Mozilla/5.0 (Linux; Android 14; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36' },
+      };
+      await ensureDebugger(tabId);
+      if (args.preset === 'desktop' && !args.width) {
+        await cdp('Emulation.clearDeviceMetricsOverride');
+        await cdp('Emulation.setUserAgentOverride', { userAgent: navigator.userAgent });
+        await cdp('Emulation.setTouchEmulationEnabled', { enabled: false });
+        // Repopulate from the real viewport so a click before the next screenshot
+        // still resolves to sensible CSS pixel coordinates.
+        try {
+          const lm = await cdp('Page.getLayoutMetrics');
+          const vw = lm.cssVisualViewport?.clientWidth || 0;
+          const vh = lm.cssVisualViewport?.clientHeight || 0;
+          if (vw && vh) lastViewport = { vw, vh, sw: vw, sh: vh };
+          else lastViewport = { vw: 0, vh: 0, sw: 0, sh: 0 };
+        } catch { lastViewport = { vw: 0, vh: 0, sw: 0, sh: 0 }; }
+        return { content: [{ type: 'text', text: 'Reset to desktop mode. Take a screenshot before clicking — previous coordinates are now invalid.' }] };
+      }
+      const p = presets[args.preset] || {};
+      const w = args.width || p.width || 390;
+      const h = args.height || p.height || 844;
+      const dpr = args.deviceScaleFactor != null ? args.deviceScaleFactor : (p.deviceScaleFactor || 2);
+      const mob = args.mobile !== undefined ? args.mobile : (p.mobile !== undefined ? p.mobile : true);
+      const ua = p.ua || '';
+      await cdp('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: mob });
+      if (ua) await cdp('Emulation.setUserAgentOverride', { userAgent: ua });
+      await cdp('Emulation.setTouchEmulationEnabled', { enabled: mob });
+      // Pre-seed viewport so coordinate scaling works before the next screenshot.
+      // sw/sh equal vw/vh because no clip.scale has been applied yet.
+      lastViewport = { vw: w, vh: h, sw: w, sh: h };
+      const label = args.preset && args.preset !== 'desktop' ? `${args.preset} (${w}x${h} @${dpr}x)` : `${w}x${h} @${dpr}x`;
+      return { content: [{ type: 'text', text: `Emulating: ${label}${mob ? ' [mobile]' : ''}. Take a screenshot before clicking — previous coordinates are now invalid.` }] };
     }
 
     case 'javascript_tool': {
@@ -1537,10 +1969,10 @@ async function _executeTool(name, args) {
       await ensureDebugger(tabId);
       // Get the element's CDP object ID via Runtime.evaluate
       const evalResult = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
-        const el = window.__clawlineElementMap?.[refId]?.deref();
-        if (!el) return { error: `Element ${refId} not found` };
+        const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(refId) : (window.__clawlineElementMap?.[refId]?.deref() || null);
+        if (!el) return { error: `Element ${refId} not found. Re-run read_page to refresh element refs.` };
         // Tag element for CDP lookup
-        const attr = '__clawline_file_' + Date.now();
+        const attr = '__clawline_file_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
         el.setAttribute(attr, '1');
         return { attr, tag: el.tagName };
       }, args: [args.ref] });
@@ -1731,35 +2163,72 @@ async function runAgentLoop() {
 
       const blocks = [];
       let textDiv = null, textBuf = '', toolBuf = null, stopReason = null;
-
-      for await (const evt of parseSSE(res)) {
-        if (abortController.signal.aborted) break;
-        switch (evt.type) {
-          case 'content_block_start':
-            if (evt.content_block?.type === 'text') { textDiv = addTextStep(); textBuf = ''; }
-            else if (evt.content_block?.type === 'tool_use') { toolBuf = { id: evt.content_block.id, name: evt.content_block.name, input: '' }; }
-            else if (evt.content_block?.type === 'thinking') { textDiv = addThinking(''); textBuf = ''; setStatus('Thinking...'); }
-            break;
-          case 'content_block_delta':
-            if (evt.delta?.type === 'text_delta') { textBuf += evt.delta.text; if (textDiv) textDiv.innerHTML = renderMarkdown(textBuf); scrollBottom(); }
-            else if (evt.delta?.type === 'input_json_delta' && toolBuf) { toolBuf.input += evt.delta.partial_json; }
-            else if (evt.delta?.type === 'thinking_delta') { textBuf += evt.delta.thinking; if (textDiv) textDiv.textContent = textBuf; scrollBottom(); }
-            break;
-          case 'content_block_stop':
-            if (textBuf && textDiv && !textDiv.classList.contains('thinking')) {
-              blocks.push({ type: 'text', text: textBuf });
-            }
-            if (toolBuf) {
-              try { toolBuf.input = JSON.parse(toolBuf.input || '{}'); } catch { toolBuf.input = {}; }
-              blocks.push({ type: 'tool_use', id: toolBuf.id, name: toolBuf.name, input: toolBuf.input });
-              toolBuf = null;
-            }
-            textDiv = null; textBuf = '';
-            break;
-          case 'message_delta':
-            if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
-            break;
+      // rAF-throttled renderer: SSE deltas can arrive thousands of times per
+      // response; rendering Markdown on every delta caused O(N²) reflow.
+      // Coalesce updates to one paint per frame, keyed by target div.
+      const _pending = new Map(); // div → { text, isThinking }
+      let _rafScheduled = false;
+      const _flush = () => {
+        _rafScheduled = false;
+        for (const [div, { text, isThinking }] of _pending) {
+          if (isThinking) div.textContent = text;
+          else div.innerHTML = renderMarkdown(text);
         }
+        _pending.clear();
+        scrollBottom();
+      };
+      const _schedule = (div, text, isThinking) => {
+        _pending.set(div, { text, isThinking });
+        if (_rafScheduled) return;
+        _rafScheduled = true;
+        requestAnimationFrame(_flush);
+      };
+      const _flushDiv = (div) => {
+        if (!_pending.has(div)) return;
+        const { text, isThinking } = _pending.get(div);
+        if (isThinking) div.textContent = text;
+        else div.innerHTML = renderMarkdown(text);
+        _pending.delete(div);
+        scrollBottom();
+      };
+
+      try {
+        for await (const evt of parseSSE(res)) {
+          if (abortController.signal.aborted) break;
+          switch (evt.type) {
+            case 'content_block_start':
+              if (evt.content_block?.type === 'text') { textDiv = addTextStep(); textBuf = ''; }
+              else if (evt.content_block?.type === 'tool_use') { toolBuf = { id: evt.content_block.id, name: evt.content_block.name, input: '' }; }
+              else if (evt.content_block?.type === 'thinking') { textDiv = addThinking(''); textBuf = ''; setStatus('Thinking...'); }
+              break;
+            case 'content_block_delta':
+              if (evt.delta?.type === 'text_delta') { textBuf += evt.delta.text; if (textDiv) _schedule(textDiv, textBuf, false); }
+              else if (evt.delta?.type === 'input_json_delta' && toolBuf) { toolBuf.input += evt.delta.partial_json; }
+              else if (evt.delta?.type === 'thinking_delta') { textBuf += evt.delta.thinking; if (textDiv) _schedule(textDiv, textBuf, true); }
+              break;
+            case 'content_block_stop':
+              // Flush any pending render for this block before finalizing
+              if (textDiv) _flushDiv(textDiv);
+              if (textBuf && textDiv && !textDiv.classList.contains('thinking')) {
+                blocks.push({ type: 'text', text: textBuf });
+              }
+              if (toolBuf) {
+                try { toolBuf.input = JSON.parse(toolBuf.input || '{}'); } catch { toolBuf.input = {}; }
+                blocks.push({ type: 'tool_use', id: toolBuf.id, name: toolBuf.name, input: toolBuf.input });
+                toolBuf = null;
+              }
+              textDiv = null; textBuf = '';
+              break;
+            case 'message_delta':
+              if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+              break;
+          }
+        }
+      } finally {
+        // Always flush — covers abort, parseSSE throwing, and tab hidden
+        // (rAF may not fire) so the persisted history reflects what we actually
+        // received instead of dropping the trailing fragment.
+        if (_pending.size) _flush();
       }
 
       if (abortController.signal.aborted) break;
@@ -1798,20 +2267,38 @@ async function runAgentLoop() {
   } catch (err) {
     if (err.name !== 'AbortError') addMsg('system', `Error: ${err.message}`);
   } finally {
-    // Fix orphaned tool_use blocks: if the last assistant message has tool_use
-    // without a matching tool_result (e.g. due to abort or error), append stub results
-    // so the API won't reject the next request.
-    const lastMsg = conversation[conversation.length - 1];
-    if (lastMsg?.role === 'assistant' && Array.isArray(lastMsg.content)) {
-      const orphanedTools = lastMsg.content.filter(b => b.type === 'tool_use');
-      if (orphanedTools.length > 0) {
-        const stubResults = orphanedTools.map(t => ({
-          type: 'tool_result',
-          tool_use_id: t.id,
-          is_error: true,
+    // Fix orphaned tool_use blocks: if assistant message has tool_use
+    // without matching tool_results, append stubs so the API won't reject next request.
+    // Case 1: last msg is assistant with tool_use → no results at all
+    // Case 2: last msg is user with partial tool_results → some tools missing results
+    const len = conversation.length;
+    let asstMsg = null, existingResultIds = new Set();
+    if (len >= 1 && conversation[len - 1]?.role === 'assistant') {
+      asstMsg = conversation[len - 1];
+    } else if (len >= 2 && conversation[len - 2]?.role === 'assistant' && conversation[len - 1]?.role === 'user') {
+      asstMsg = conversation[len - 2];
+      const userMsg = conversation[len - 1];
+      if (Array.isArray(userMsg.content)) {
+        for (const b of userMsg.content) {
+          if (b.type === 'tool_result') existingResultIds.add(b.tool_use_id);
+        }
+      }
+    }
+    if (asstMsg && Array.isArray(asstMsg.content)) {
+      const missingIds = asstMsg.content
+        .filter(b => b.type === 'tool_use' && !existingResultIds.has(b.id))
+        .map(b => b.id);
+      if (missingIds.length > 0) {
+        const stubs = missingIds.map(id => ({
+          type: 'tool_result', tool_use_id: id, is_error: true,
           content: [{ type: 'text', text: 'Aborted by user' }],
         }));
-        conversation.push({ role: 'user', content: stubResults });
+        if (existingResultIds.size > 0) {
+          // Merge into existing user message
+          conversation[len - 1].content.push(...stubs);
+        } else {
+          conversation.push({ role: 'user', content: stubs });
+        }
       }
     }
     finalizeToolGroup(activeToolGroup);
@@ -2001,7 +2488,7 @@ loadConversations().then(() => {
   if (activeConvId && allConversations[activeConvId]) {
     const conv = allConversations[activeConvId];
     conversation = conv.messages || [];
-    messagesEl.innerHTML = conv.displayMessages || '';
+    messagesEl.innerHTML = sanitizeHtml(conv.displayMessages || '');
     migrateOldMessages(messagesEl);
     // Finalize any uncollapsed groups restored from storage
     messagesEl.querySelectorAll('.tool-group:not(.collapsed)').forEach(g => finalizeToolGroup(g));
