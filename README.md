@@ -13,10 +13,18 @@ Chrome extension — AI browser automation via Claude. Supports manual use (side
 
 ### 2. Install Native Messaging Host
 
+**macOS/Linux:**
 ```bash
 cd native-host
 npm install  # if needed
 ./install.sh <EXTENSION_ID>
+```
+
+**Windows:**
+```cmd
+cd native-host
+npm install
+install.bat <EXTENSION_ID>
 ```
 
 ### 3. Verify
@@ -52,8 +60,10 @@ curl -X POST http://127.0.0.1:4821/hook \
 ├── content-script.js      # Accessibility tree generator (injected)
 ├── native-host/           # Native Messaging Host + HTTP server
 │   ├── index.js           # Hook API server (port 4821)
-│   ├── install.sh         # macOS installer
-│   └── launcher.sh        # Node.js launcher (handles nvm/fnm)
+│   ├── install.sh         # macOS/Linux installer
+│   ├── install.bat        # Windows installer
+│   ├── launcher.sh        # Node.js launcher (macOS/Linux)
+│   └── launcher.bat       # Node.js launcher (Windows)
 └── docs/
     └── HOOK_API.md        # Hook API reference for code agents
 ```
