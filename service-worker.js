@@ -86,6 +86,18 @@ chrome.commands.onCommand.addListener((command) => {
 // Sidepanel port registry (declared before connectNativeHost which references it)
 const sidepanelPorts = new Map(); // windowId → port
 
+// Native host connection state
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+let heartbeatTimer = null;
+let heartbeatFailCount = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const INITIAL_RECONNECT_DELAY = 1000; // 1 second
+const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+const HEARTBEAT_INTERVAL = 10000; // 10 seconds
+const HEARTBEAT_TIMEOUT = 5000; // 5 seconds
+const MAX_HEARTBEAT_FAILS = 3;
+
 // Broadcast hook bridge status to all sidepanels
 function broadcastHookStatus() {
   const status = { type: 'hook_status', connected: !!nativePort };
@@ -94,21 +106,137 @@ function broadcastHookStatus() {
   }
 }
 
+function startHeartbeat() {
+  stopHeartbeat(); // Clear any existing timer
+
+  heartbeatTimer = setInterval(() => {
+    if (!nativePort) {
+      stopHeartbeat();
+      return;
+    }
+
+    let timeoutTimer = null;
+    let responded = false;
+
+    const pingListener = (msg) => {
+      if (msg.type === 'pong') {
+        responded = true;
+        heartbeatFailCount = 0;
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        nativePort.onMessage.removeListener(pingListener);
+      }
+    };
+
+    nativePort.onMessage.addListener(pingListener);
+
+    // Send ping
+    try {
+      nativePort.postMessage({ type: 'ping', timestamp: Date.now() });
+    } catch (e) {
+      console.warn('[clawline] heartbeat ping failed:', e.message);
+      stopHeartbeat();
+      return;
+    }
+
+    // Set timeout for response
+    timeoutTimer = setTimeout(() => {
+      nativePort.onMessage.removeListener(pingListener);
+      if (!responded) {
+        heartbeatFailCount++;
+        console.warn(`[clawline] heartbeat timeout (${heartbeatFailCount}/${MAX_HEARTBEAT_FAILS})`);
+
+        if (heartbeatFailCount >= MAX_HEARTBEAT_FAILS) {
+          console.log('[clawline] max heartbeat failures, reconnecting...');
+          stopHeartbeat();
+          // Force disconnect and reconnect
+          if (nativePort) {
+            try { nativePort.disconnect(); } catch {}
+            nativePort = null;
+          }
+          connectNativeHost();
+        }
+      }
+    }, HEARTBEAT_TIMEOUT);
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+  heartbeatFailCount = 0;
+}
+
 function connectNativeHost() {
-  if (nativePort) return;
+  if (nativePort) {
+    console.log('[clawline] native host already connected, skipping');
+    return;
+  }
+
+  // Clear any pending reconnect timer
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   try {
+    console.log('[clawline] attempting native host connection...');
     nativePort = chrome.runtime.connectNative('com.clawline.agent');
+
     nativePort.onMessage.addListener(handleNativeMessage);
+
     nativePort.onDisconnect.addListener(() => {
+      const lastError = chrome.runtime.lastError;
+      const errorMsg = lastError ? lastError.message : 'unknown reason';
+      console.log('[clawline] native host disconnected:', errorMsg);
+
+      stopHeartbeat(); // Stop heartbeat on disconnect
       nativePort = null;
       broadcastHookStatus();
+
+      // Attempt to reconnect with exponential backoff
+      reconnectAttempt++;
+      if (reconnectAttempt <= MAX_RECONNECT_ATTEMPTS) {
+        const delay = Math.min(
+          INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempt - 1),
+          MAX_RECONNECT_DELAY
+        );
+        console.log(`[clawline] will reconnect in ${delay}ms (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          connectNativeHost();
+        }, delay);
+      } else {
+        console.log('[clawline] max reconnect attempts reached, giving up');
+      }
     });
+
+    // Connection successful - reset reconnect counter
+    reconnectAttempt = 0;
     console.log('[clawline] native host connected');
     broadcastHookStatus();
+
+    // Start heartbeat to monitor connection health
+    startHeartbeat();
   } catch (e) {
     console.log('[clawline] native host connect failed:', e.message);
     nativePort = null;
     broadcastHookStatus();
+
+    // Retry on connection error with backoff
+    reconnectAttempt++;
+    if (reconnectAttempt <= MAX_RECONNECT_ATTEMPTS) {
+      const delay = Math.min(
+        INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempt - 1),
+        MAX_RECONNECT_DELAY
+      );
+      console.log(`[clawline] will retry connection in ${delay}ms (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectNativeHost();
+      }, delay);
+    }
   }
 }
 

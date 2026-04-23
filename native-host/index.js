@@ -62,13 +62,25 @@ function sendToChrome(msg) {
   const buf = Buffer.from(json, 'utf-8');
   const header = Buffer.alloc(4);
   header.writeUInt32LE(buf.length, 0);
-  process.stdout.write(header);
-  process.stdout.write(buf);
+  try {
+    process.stdout.write(header);
+    process.stdout.write(buf);
+    log('Sent to Chrome:', msg.type || msg.action || 'unknown', msg.taskId ? `(taskId: ${msg.taskId})` : '');
+  } catch (e) {
+    log('Failed to send to Chrome:', e.message);
+    chromeConnected = false;
+  }
 }
 
 let stdinBuf = Buffer.alloc(0);
 
 process.stdin.on('data', (chunk) => {
+  // Mark Chrome as connected on first data received
+  if (!chromeConnected) {
+    chromeConnected = true;
+    log('Chrome connection established (first data received)');
+  }
+
   stdinBuf = Buffer.concat([stdinBuf, chunk]);
   // Parse messages: 4-byte LE length + JSON payload
   while (stdinBuf.length >= 4) {
@@ -78,6 +90,7 @@ process.stdin.on('data', (chunk) => {
     stdinBuf = stdinBuf.subarray(4 + msgLen);
     try {
       const msg = JSON.parse(payload);
+      log('Received from Chrome:', msg.type || msg.action || 'unknown', msg.taskId ? `(taskId: ${msg.taskId})` : '');
       handleChromeMessage(msg);
     } catch (e) {
       log('Failed to parse Chrome message:', e.message);
@@ -97,12 +110,24 @@ process.stdin.on('end', () => {
   process.exit(0);
 });
 
-// Mark Chrome as connected once we start receiving
-chromeConnected = true;
+process.stdin.on('error', (err) => {
+  log('stdin error:', err.message);
+  chromeConnected = false;
+});
 
 // ── Chrome Message Handling ──
 
 function handleChromeMessage(msg) {
+  // Ping/heartbeat — respond immediately
+  if (msg.type === 'ping') {
+    try {
+      sendToChrome({ type: 'pong', timestamp: Date.now() });
+    } catch (e) {
+      log('Failed to send pong:', e.message);
+    }
+    return;
+  }
+
   // Error log — append to local file
   if (msg.type === 'error_log' && msg.error) {
     const e = msg.error;
