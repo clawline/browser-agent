@@ -1,0 +1,7 @@
+{
+  "name": "com.clawline.agent",
+  "description": "Clawline Browser Agent Hook - Native Messaging Host",
+  "path": "C:\\Users\\micha\\projects\\browser-agent\\native-host\\launcher.bat",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://cieihjmncnbcdopackfalfnbednkfidc/"]
+}
