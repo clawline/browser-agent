@@ -39,8 +39,10 @@ const _RECONNECT_MAX_DELAY = 30000;
     swPort.onMessage.addListener((msg) => {
       // Update hook bridge status indicator
       if (msg.type === 'hook_status') {
-        if (msg.connected && !hookConnected) hookLogAdd('info', 'Bridge connected');
+        if (msg.connected && !hookConnected) hookLogAdd('info', 'Bridge connected' + (msg.port ? ` (port ${msg.port})` : ''));
         else if (!msg.connected && hookConnected) hookLogAdd('err', 'Bridge disconnected');
+        if (typeof msg.port === 'number') hookHostPort = msg.port;
+        else if (msg.connected === false) hookHostPort = null;
         updateHookStatus(msg.connected);
         return;
       }
@@ -70,6 +72,7 @@ const _RECONNECT_MAX_DELAY = 30000;
 
 // ── Hook Bridge Status Indicator & Panel ──
 let hookConnected = false;
+let hookHostPort = null; // native host's bound HTTP port (sent via hook_status)
 const hookStats = { done: 0, error: 0 };
 const hookLog = []; // { time, icon, text }
 const HOOK_LOG_MAX = 50;
@@ -106,6 +109,7 @@ function updateHookStatus(connected, active) {
 function renderBridgePanel() {
   // Connection status
   const hookVal = document.getElementById('bp-hook-val');
+  const portVal = document.getElementById('bp-port-val');
   const apiVal = document.getElementById('bp-api-val');
   const taskStats = document.getElementById('bp-task-stats');
   const logEl = document.getElementById('bp-log');
@@ -113,6 +117,11 @@ function renderBridgePanel() {
 
   hookVal.textContent = hookConnected ? 'Connected' : 'Disconnected';
   hookVal.className = 'bp-val ' + (hookConnected ? 'bp-on' : 'bp-off');
+
+  if (portVal) {
+    portVal.textContent = hookHostPort != null ? String(hookHostPort) : '—';
+    portVal.className = 'bp-val ' + (hookHostPort != null ? 'bp-on' : 'bp-off');
+  }
 
   // API status — show current URL, ping later
   const apiHost = API_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');

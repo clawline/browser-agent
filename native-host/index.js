@@ -55,6 +55,8 @@ function rotateLogIfNeeded() {
 const pendingRequests = new Map(); // taskId → { resolve, timer }
 let taskCounter = 0;
 let chromeConnected = false;
+const HOST_STARTED_AT = new Date().toISOString();
+let lastSessionsInfo = null; // { sessions, extensionVersion, extensionName, fetchedAt }
 
 // ── Native Messaging Protocol (stdin/stdout) ──
 
@@ -158,6 +160,13 @@ function handleChromeMessage(msg) {
 
   // Sessions list response
   if (msg.type === 'sessions') {
+    // Cache latest sessions snapshot so GET / can return rich discovery info
+    lastSessionsInfo = {
+      sessions: msg.sessions || [],
+      extensionVersion: msg.extensionVersion || null,
+      extensionName: msg.extensionName || null,
+      fetchedAt: new Date().toISOString(),
+    };
     const pending = pendingRequests.get('__list_sessions');
     if (pending) {
       clearTimeout(pending.timer);
@@ -345,14 +354,26 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // GET / — health check
+    // GET / — health check + discovery info
     if (req.method === 'GET' && path === '/') {
+      // Proactively refresh sessions snapshot if stale (>5s) and Chrome is connected
+      const stale = !lastSessionsInfo || (Date.now() - new Date(lastSessionsInfo.fetchedAt).getTime() > 5000);
+      if (chromeConnected && stale) {
+        try { sendToChrome({ action: 'list_sessions' }); } catch {}
+        // Don't wait — we serve whatever we have; next GET / will see fresh data
+      }
       sendJSON(res, 200, {
         name: 'clawline-hook',
         version: '1.0.0',
+        pid: process.pid,
+        hostStartedAt: HOST_STARTED_AT,
         chromeConnected,
         port: actualPort,
         pendingTasks: pendingRequests.size,
+        extensionName: lastSessionsInfo?.extensionName || null,
+        extensionVersion: lastSessionsInfo?.extensionVersion || null,
+        windows: lastSessionsInfo?.sessions || [],
+        sessionsFetchedAt: lastSessionsInfo?.fetchedAt || null,
       });
       return;
     }

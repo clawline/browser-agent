@@ -4,6 +4,10 @@
 // ── State (declared early so error handlers can access) ──
 let nativePort = null;
 
+// Latest hook port reported by the native host (via type:'hook_port' message).
+// null until the host's HTTP server starts and reports its bound port.
+let hookPort = null;
+
 // ── Error logging — capture service worker errors ──
 self.addEventListener('error', (e) => {
   if (nativePort) {
@@ -100,7 +104,7 @@ const MAX_HEARTBEAT_FAILS = 3;
 
 // Broadcast hook bridge status to all sidepanels
 function broadcastHookStatus() {
-  const status = { type: 'hook_status', connected: !!nativePort };
+  const status = { type: 'hook_status', connected: !!nativePort, port: hookPort };
   for (const [, port] of sidepanelPorts) {
     try { port.postMessage(status); } catch (e) { console.warn('[clawline] broadcast status failed:', e.message); }
   }
@@ -193,6 +197,7 @@ function connectNativeHost() {
 
       stopHeartbeat(); // Stop heartbeat on disconnect
       nativePort = null;
+      hookPort = null;
       broadcastHookStatus();
 
       // Attempt to reconnect with exponential backoff
@@ -267,7 +272,7 @@ chrome.runtime.onConnect.addListener((port) => {
       sidepanelPorts.set(msg.windowId, port);
       console.log('[clawline] sidepanel registered, windowId:', msg.windowId);
       // Send current hook status immediately
-      try { port.postMessage({ type: 'hook_status', connected: !!nativePort }); } catch (e) { console.warn('[clawline] send hook_status failed:', e.message); }
+      try { port.postMessage({ type: 'hook_status', connected: !!nativePort, port: hookPort }); } catch (e) { console.warn('[clawline] send hook_status failed:', e.message); }
       return;
     }
     if (msg.type === 'hook_response') {
@@ -295,14 +300,62 @@ chrome.runtime.onConnect.addListener((port) => {
 // ── Message Routing (Native Host → Sidepanel) ──
 
 async function handleNativeMessage(msg) {
-  // List sessions
+  // Native host reports its bound HTTP port (sent on host startup or rebind)
+  if (msg.type === 'hook_port' && typeof msg.port === 'number') {
+    hookPort = msg.port;
+    console.log('[clawline] native host port:', hookPort);
+    broadcastHookStatus();
+    return;
+  }
+
+  // List sessions — now enriched with window focus + tab info
   if (msg.action === 'list_sessions') {
     const sessions = [];
+    const manifest = chrome.runtime.getManifest();
     for (const [windowId] of sidepanelPorts) {
-      sessions.push({ windowId });
+      if (typeof windowId !== 'number') {
+        // Unregistered placeholder — skip, not a real Chrome window
+        continue;
+      }
+      const session = { windowId };
+      try {
+        const win = await chrome.windows.get(windowId);
+        session.focused = !!win.focused;
+        session.windowType = win.type;
+        session.incognito = !!win.incognito;
+      } catch {}
+      try {
+        const tabs = await chrome.tabs.query({ windowId });
+        session.tabCount = tabs.length;
+        // Full tab list (cap to keep payload bounded). Useful for skill preflight
+        // to target a specific tab by id without first running tabs_context.
+        session.tabs = tabs.slice(0, 64).map(t => ({
+          id: t.id,
+          title: (t.title || '').slice(0, 120),
+          url: t.url || '',
+          active: !!t.active,
+          pinned: !!t.pinned,
+          discarded: !!t.discarded,
+        }));
+        const active = tabs.find(t => t.active);
+        if (active) {
+          session.activeTab = {
+            id: active.id,
+            title: (active.title || '').slice(0, 120),
+            url: active.url || '',
+          };
+        }
+      } catch {}
+      sessions.push(session);
     }
+    const payload = {
+      type: 'sessions',
+      sessions,
+      extensionVersion: manifest.version,
+      extensionName: manifest.name,
+    };
     if (nativePort) {
-      try { nativePort.postMessage({ type: 'sessions', sessions }); } catch (e) { console.warn('[clawline] send sessions failed:', e.message); }
+      try { nativePort.postMessage(payload); } catch (e) { console.warn('[clawline] send sessions failed:', e.message); }
     }
     return;
   }
