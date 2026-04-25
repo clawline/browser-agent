@@ -28,12 +28,11 @@ const HOOK_URL = `http://127.0.0.1:${HOOK_PORT}/hook`;
 const HEALTH_URL = `http://127.0.0.1:${HOOK_PORT}/`;
 const SESSIONS_URL = `http://127.0.0.1:${HOOK_PORT}/sessions`;
 
-// Per-task API override sent in every /hook body. NOT persisted to sidepanel
-// localStorage. URL/model defaults are safe to hardcode; the API key MUST be
-// supplied via env (CLAWLINE_API_KEY) — never commit a real key here.
-const API_URL_OVERRIDE = process.env.CLAWLINE_API_URL || 'https://api.eagle.openclaws.co.uk';
+// Default values are FALSY so they don't override the sidepanel's own config.
+// Set via env when you want a per-task override (e.g. for A/B testing endpoints).
+const API_URL_OVERRIDE = process.env.CLAWLINE_API_URL || '';
 const API_KEY_OVERRIDE = process.env.CLAWLINE_API_KEY || '';
-const MODEL_OVERRIDE = process.env.CLAWLINE_MODEL || 'claude-haiku-4-5-20251001';
+const MODEL_OVERRIDE = process.env.CLAWLINE_MODEL || '';
 
 const N_DEFAULT = 10;
 const N_LONGTAIL = 30;
@@ -523,6 +522,13 @@ async function getSessions() {
   return body.sessions || [];
 }
 
+// Match scenario by exact id, or by family prefix (e.g. "S8" matches S8-T1/T2/T3
+// but NOT "W1" matching W10/W11). Family match requires the matched id to have
+// a "-" right after the prefix.
+function selectionMatches(scenarioId, sel) {
+  return scenarioId === sel || scenarioId.startsWith(sel + '-');
+}
+
 // ── Run analysis ──
 
 function analyzeRun(parsed, rtt_ms, scenario) {
@@ -629,12 +635,15 @@ async function runOnce(scenario, extraBody = {}) {
   const t0 = performance.now();
   const body = {
     task: scenario.task,
-    apiUrl: API_URL_OVERRIDE,
-    apiKey: API_KEY_OVERRIDE,
-    model: MODEL_OVERRIDE,
     ...(scenario.options || {}),
     ...extraBody,
   };
+  // Only send apiUrl/apiKey/model if explicitly set via env. Otherwise let the
+  // sidepanel use its own configured values — sending an empty string would
+  // overwrite the sidepanel's saved key with nothing and trigger 401s.
+  if (API_URL_OVERRIDE) body.apiUrl = API_URL_OVERRIDE;
+  if (API_KEY_OVERRIDE) body.apiKey = API_KEY_OVERRIDE;
+  if (MODEL_OVERRIDE) body.model = MODEL_OVERRIDE;
   const timeoutMs = scenario.timeout_ms || FETCH_TIMEOUT_MS;
   let response;
   try {
@@ -1019,7 +1028,7 @@ async function main() {
   // Step 3: run scenarios
   const results = [];
   const standardScenarios = SCENARIOS.filter(s =>
-    !SELECTED || SELECTED.some(sel => s.id.startsWith(sel))
+    !SELECTED || SELECTED.some(sel => selectionMatches(s.id, sel))
   );
 
   for (const scenario of standardScenarios) {
@@ -1038,11 +1047,11 @@ async function main() {
 
   // S6 + S7 (manual)
   if (!SKIP_MANUAL) {
-    if (!SELECTED || SELECTED.some(sel => 'S6'.startsWith(sel))) {
+    if (!SELECTED || SELECTED.some(sel => selectionMatches('S6', sel))) {
       try { results.push(await runS6()); }
       catch (e) { log(`  ✗ S6 threw: ${e.message}`); results.push({ id: 'S6', error: e.message }); throw e; }
     }
-    if (!SELECTED || SELECTED.some(sel => 'S7'.startsWith(sel))) {
+    if (!SELECTED || SELECTED.some(sel => selectionMatches('S7', sel))) {
       try { results.push(await runS7()); }
       catch (e) { log(`  ✗ S7 threw: ${e.message}`); results.push({ id: 'S7', error: e.message }); throw e; }
     }
