@@ -772,7 +772,6 @@ const TOOLS = [
   { name: 'javascript_tool', description: 'Execute JavaScript in the page context. Returns result of last expression. Do NOT use "return" — just write the expression.', input_schema: { type: 'object', properties: { action: { type: 'string', description: 'Must be "javascript_exec"' }, text: { type: 'string', description: 'JavaScript code to execute' } }, required: ['action', 'text'] } },
   { name: 'file_upload', description: 'Upload files to a file input element. Do NOT click file inputs — use this tool with the ref_ID instead. Paths must be absolute.', input_schema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths to upload' }, ref: { type: 'string', description: 'ref_ID of the file input element' } }, required: ['paths', 'ref'] } },
   { name: 'update_plan', description: 'Present a plan to the user before proceeding with complex tasks.', input_schema: { type: 'object', properties: { domains: { type: 'array', items: { type: 'string' }, description: 'Domains to visit' }, approach: { type: 'array', items: { type: 'string' }, description: 'Ordered steps (3-7)' } }, required: ['domains', 'approach'] } },
-  { name: 'turn_answer_start', description: 'Call this immediately before your text response to the user for this turn. Required every turn - whether or not you made tool calls. After calling, write your response. No more tools after this.', input_schema: { type: 'object', properties: {}, required: [] }, cache_control: { type: 'ephemeral' } },
 ];
 
 // ── System Prompt ──
@@ -831,6 +830,10 @@ CRITICAL RULES for efficient browser automation:
 7. Don't keep taking screenshots to verify simple actions. Trust the tool results.
 
 8. When a task is done, stop. Don't add unnecessary verification steps.
+
+9. CRITICAL — Avoid redundant read_page calls. read_page returns ALL refs you need for the rest of the task. Once you have refs, execute multiple sequential actions (click, click, click, fill, fill) WITHOUT re-reading between them. Only call read_page again if (a) the page navigated, (b) a tool returned "ref no longer exists", or (c) you genuinely need refs for newly appeared content. Re-reading after every click is wasteful and wrong.
+
+10. For multi-step UI tasks (e.g. "add 5 todos, mark 2 complete, delete 1"), do read_page ONCE upfront, then execute all 8+ actions in sequence. Only re-read at the very end if the validator/result needs to confirm final state.
 </tool_usage_requirements>
 
 <efficiency_rules>
@@ -864,19 +867,7 @@ ${behaviorText}
 7. Debug: read_console_messages, read_network_requests, javascript_tool
 8. Screenshot: only when visual layout matters and read_page can't tell you what you need
 </tool_workflows>` },
-  { type: 'text', text: `Platform: ${navigator.platform.includes('Mac') ? 'Mac — use "cmd" as modifier key (cmd+a, cmd+c, cmd+v)' : 'Windows/Linux — use "ctrl" as modifier key (ctrl+a, ctrl+c, ctrl+v)'}` },
-  { type: 'text', text: `<turn_answer_start_instructions>
-Before outputting any text response to the user this turn, call turn_answer_start first.
-
-WITH TOOL CALLS: After completing all tool calls, call turn_answer_start, then write your response.
-WITHOUT TOOL CALLS: Call turn_answer_start immediately, then write your response.
-
-RULES:
-- Call exactly once per turn
-- Call immediately before your text response
-- NEVER call during intermediate thoughts, reasoning, or while planning to use more tools
-- No more tools after calling this
-</turn_answer_start_instructions>`, cache_control: { type: 'ephemeral' } },
+  { type: 'text', text: `Platform: ${navigator.platform.includes('Mac') ? 'Mac — use "cmd" as modifier key (cmd+a, cmd+c, cmd+v)' : 'Windows/Linux — use "ctrl" as modifier key (ctrl+a, ctrl+c, ctrl+v)'}`, cache_control: { type: 'ephemeral' } },
   ];
 }
 
@@ -2079,10 +2070,6 @@ async function _executeTool(name, args) {
       return { content: [{ type: 'text', text: `Plan updated:\nDomains: ${domains}\nSteps:\n• ${steps}` }] };
     }
 
-    case 'turn_answer_start': {
-      return { content: [{ type: 'text', text: 'Proceeding with response.' }] };
-    }
-
     default:
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] };
   }
@@ -2354,11 +2341,6 @@ async function runAgentLoop() {
       // Execute tools
       const results = [];
       for (const tool of toolUses) {
-        // Skip UI display for signal tools
-        if (tool.name === 'turn_answer_start') {
-          results.push({ type: 'tool_result', tool_use_id: tool.id, content: [{ type: 'text', text: 'Proceeding with response.' }] });
-          continue;
-        }
         setStatus(`${tool.name}...`);
         addToolCall(tool.name, tool.input);
         try {

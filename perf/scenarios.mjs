@@ -1039,9 +1039,9 @@ async function main() {
       const r = await runStandardScenario(scenario, scenarioN);
       results.push(r);
     } catch (e) {
-      log(`  ✗ ${scenario.id} threw: ${e.message}`);
-      results.push({ id: scenario.id, name: scenario.name, dimension: scenario.dimension, error: e.message });
-      throw e;  // Stop on failure per resley's directive
+      log(`  ✗ ${scenario.id} threw: ${e.message} — continuing`);
+      results.push({ id: scenario.id, name: scenario.name, category: scenario.category, dimension: scenario.dimension, error: e.message });
+      // Don't throw — let the rest of the suite run. Errored scenario is in results with .error.
     }
   }
 
