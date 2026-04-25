@@ -676,6 +676,29 @@ document.getElementById('cfg-import-file').addEventListener('change', async (e) 
   e.target.value = '';
 });
 
+// Download SKILL.md — bundled in extension under skill/SKILL.md so users can
+// install the latest skill into their Claude Code config without going to
+// the source repo. Saved as `browser-agent-SKILL.md` to avoid clobbering
+// other skills if the user downloads multiple.
+document.getElementById('cfg-download-skill').addEventListener('click', async () => {
+  try {
+    const url = chrome.runtime.getURL('skill/SKILL.md');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = 'browser-agent-SKILL.md';
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+    setStatus('SKILL.md downloaded'); setTimeout(() => setStatus(''), 2000);
+  } catch (err) {
+    setStatus(`Download failed: ${err.message}`); setTimeout(() => setStatus(''), 3000);
+  }
+});
+
 modelSelect.addEventListener('change', () => localStorage.setItem('clawline-model', modelSelect.value));
 stepsSelect.addEventListener('change', () => localStorage.setItem('clawline-steps', stepsSelect.value));
 
