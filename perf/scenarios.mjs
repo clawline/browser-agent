@@ -52,12 +52,93 @@ const N = parseInt(argMap.n || N_DEFAULT, 10);
 const SKIP_MANUAL = argMap['skip-manual'] === true || argMap['skip-manual'] === 'true';
 const LABEL = argMap.label || 'baseline';
 
+// ── Per-category default N (heavy scenarios run fewer times) ──
+
+const N_BY_CATEGORY = {
+  atomic: 10,
+  decisiveness: 10,
+  extraction: 5,
+  manipulation: 5,
+  forms: 5,
+  workflow: 3,
+  devtools: 3,
+};
+function defaultNForCategory(cat) { return N_BY_CATEGORY[cat] || N; }
+
+// ── Validator helpers (used by W* scenarios to score result correctness) ──
+
+const v = {
+  // Count distinct URLs in text. Matches http(s)://...
+  countURLs(text) {
+    const m = text?.match(/https?:\/\/[^\s)<>"'`]+/g) || [];
+    return new Set(m).size;
+  },
+  // Number of digit groups (proxy for "contains N numeric metrics")
+  countNumbers(text, minDigits = 1) {
+    const re = new RegExp(`\\b\\d{${minDigits},}\\b`, 'g');
+    return (text?.match(re) || []).length;
+  },
+  // All phrases must appear (case-insensitive)
+  containsAll(text, phrases) {
+    const lower = (text || '').toLowerCase();
+    const missing = phrases.filter(p => !lower.includes(p.toLowerCase()));
+    return { passed: missing.length === 0, missing };
+  },
+  // At least one of these phrases (case-insensitive)
+  containsAny(text, phrases) {
+    const lower = (text || '').toLowerCase();
+    return phrases.some(p => lower.includes(p.toLowerCase()));
+  },
+  // None of these phrases (case-insensitive)
+  containsNone(text, phrases) {
+    const lower = (text || '').toLowerCase();
+    const found = phrases.filter(p => lower.includes(p.toLowerCase()));
+    return { passed: found.length === 0, found };
+  },
+  // Detect a JSON array with at least minItems items, parsing tolerantly
+  hasJSONArray(text, minItems) {
+    if (!text) return { passed: false, count: 0 };
+    // Find largest JSON array-ish substring
+    const matches = text.match(/\[\s*\{[^[]*?\}\s*(?:,\s*\{[^[]*?\}\s*)*\]/g) || [];
+    let best = 0;
+    for (const m of matches) {
+      try {
+        const arr = JSON.parse(m);
+        if (Array.isArray(arr)) best = Math.max(best, arr.length);
+      } catch {}
+    }
+    // Fallback: count "title:" / "name:" mentions if JSON parsing fails
+    if (best < minItems) {
+      const titleHits = (text.match(/["']?(title|name|rank|number)["']?\s*[:=]/gi) || []).length;
+      best = Math.max(best, titleHits);
+    }
+    return { passed: best >= minItems, count: best };
+  },
+  // Match a regex
+  matches(text, regex) { return regex.test(text || ''); },
+};
+
 // ── Scenario definitions ──
 
+// Each scenario:
+//   id: short label (S* atomic, W* workflow)
+//   name: human-readable Chinese name
+//   category: 'atomic' | 'extraction' | 'manipulation' | 'forms' | 'workflow' | 'devtools' | 'decisiveness'
+//   dimension: free-text legacy field (kept for backwards compat)
+//   task: prompt sent to the agent
+//   theoretical_min_tools: lower bound used to compute "redundant calls"
+//   options: { include_tools, include_screenshot } passed via /hook body
+//   validator: (resultText, meta) => { passed, score (0..1), details }
+//   timeout_ms: override default fetch timeout (8 min)
+//   n_override: number of runs (else falls back to defaultNForCategory)
+//   decisiveness: legacy boolean — kept for the existing decisiveness highlight
+
 const SCENARIOS = [
+  // ── Atomic baselines (single-tool latency / stability) ──
   {
     id: 'S1',
     name: '导航 + DOM 抓取基线',
+    category: 'atomic',
     dimension: 'baseline',
     task: 'Navigate to https://example.com. Then call read_page once with filter=interactive. Stop after that — no other tools.',
     theoretical_min_tools: 3,
@@ -66,6 +147,7 @@ const SCENARIOS = [
   {
     id: 'S2A',
     name: '点击延迟 — ref 路径',
+    category: 'atomic',
     dimension: 'click-latency',
     task: 'Navigate to https://news.ycombinator.com. Then click the first story\'s title link (the headline, NOT the "comments" link). Use ref-based clicking via find or read_page. Do NOT take any screenshots.',
     theoretical_min_tools: 4,
@@ -74,22 +156,16 @@ const SCENARIOS = [
   {
     id: 'S2B',
     name: '点击延迟 — 坐标路径',
+    category: 'atomic',
     dimension: 'click-latency',
     task: 'Navigate to https://news.ycombinator.com. Take exactly one screenshot. Then click the first story title using coordinate-based clicking (computer left_click with coordinate parameter, NOT ref). Do not screenshot again.',
     theoretical_min_tools: 4,
     options: { include_tools: true },
   },
   {
-    id: 'S3',
-    name: '表单填写吞吐',
-    dimension: 'form-throughput',
-    task: 'Navigate to https://httpbin.org/forms/post. Read the page once to get refs. Then use form_input to fill: customer name = "Alice", telephone = "13800000000", email = "a@b.com", size = "medium". Do NOT submit. Stop.',
-    theoretical_min_tools: 7,
-    options: { include_tools: true },
-  },
-  {
     id: 'S4',
     name: '长页面截图性能',
+    category: 'atomic',
     dimension: 'screenshot',
     task: 'Navigate to https://en.wikipedia.org/wiki/Web_browser. Scroll down 5 ticks. Then take exactly one screenshot. Stop.',
     theoretical_min_tools: 4,
@@ -98,14 +174,18 @@ const SCENARIOS = [
   {
     id: 'S5',
     name: '网络监听 + 重复 read_page 稳定性',
+    category: 'atomic',
     dimension: 'network+repeat',
     task: 'Navigate to https://www.bing.com/search?q=test. Call read_network_requests once. Then call read_page (filter=interactive) three times in a row. Then call read_network_requests one more time. Stop.',
     theoretical_min_tools: 7,
     options: { include_tools: true },
   },
+
+  // ── Decisiveness (S8 series — atomic decision-making) ──
   {
     id: 'S8-T1',
     name: '决策果断性 — GitHub 顶部搜索',
+    category: 'decisiveness',
     dimension: 'decisiveness',
     task: 'Open https://github.com. In the top navbar search box, type "react" and submit the search.',
     theoretical_min_tools: 5,
@@ -115,6 +195,7 @@ const SCENARIOS = [
   {
     id: 'S8-T2',
     name: '决策果断性 — Google Gmail 链接',
+    category: 'decisiveness',
     dimension: 'decisiveness',
     task: 'Open https://www.google.com. Click the "Gmail" link visible on the page.',
     theoretical_min_tools: 4,
@@ -124,11 +205,268 @@ const SCENARIOS = [
   {
     id: 'S8-T3',
     name: '决策果断性 — HN 第3条评论链接',
+    category: 'decisiveness',
     dimension: 'decisiveness',
     task: 'Open https://news.ycombinator.com. Click the "comments" link of the third story (NOT its title).',
     theoretical_min_tools: 4,
     options: { include_tools: true },
     decisiveness: true,
+  },
+
+  // ── A. Structured Extraction (W1-W4) ──
+  {
+    id: 'W1',
+    name: '抽取 — HN 前 10 条故事 JSON',
+    category: 'extraction',
+    dimension: 'extraction',
+    task: 'Open https://news.ycombinator.com. Read the page and extract the top 10 stories. Output as a JSON array with each item containing: rank, title, url, score (number), author, comments_count (number), age. Output ONLY the JSON array, no preamble.',
+    theoretical_min_tools: 4,
+    options: { include_tools: true },
+    timeout_ms: 5 * 60 * 1000,
+    validator: (text) => {
+      const j = v.hasJSONArray(text, 10);
+      const titles = v.matches(text, /title["']?\s*[:=]/i);
+      const scores = v.countNumbers(text, 1) >= 10;
+      const passed = j.passed && titles && scores;
+      const score = (j.passed ? 0.5 : Math.min(j.count, 10) / 20) + (titles ? 0.25 : 0) + (scores ? 0.25 : 0);
+      return { passed, score: Math.min(1, score), details: `items=${j.count}, titles=${titles}, scores=${scores}` };
+    },
+  },
+  {
+    id: 'W2',
+    name: '抽取 — GitHub repo 元数据',
+    category: 'extraction',
+    dimension: 'extraction',
+    task: 'Open https://github.com/facebook/react. Extract repository metrics. Output a JSON object with these keys (omit any you cannot find): stars, forks, watchers, open_issues, latest_release_tag, primary_language, license, contributors_count. Use the actual numeric/string values from the page. Output ONLY the JSON, no preamble.',
+    theoretical_min_tools: 4,
+    options: { include_tools: true },
+    timeout_ms: 5 * 60 * 1000,
+    validator: (text) => {
+      const numbers = v.countNumbers(text, 1);
+      const keys = ['stars', 'forks', 'language', 'react'];
+      const present = keys.filter(k => (text || '').toLowerCase().includes(k.toLowerCase())).length;
+      const passed = numbers >= 4 && present >= 3;
+      return { passed, score: Math.min(1, numbers / 6 * 0.5 + present / 4 * 0.5), details: `numbers=${numbers}, keysPresent=${present}/4` };
+    },
+  },
+  {
+    id: 'W3',
+    name: '抽取 — Wikipedia infobox',
+    category: 'extraction',
+    dimension: 'extraction',
+    task: 'Open https://en.wikipedia.org/wiki/Donald_Knuth. Find the infobox on the right side of the page. Extract its key-value pairs (Born, Education, Known for, Awards, Spouse, etc.). Output as a JSON object. Output ONLY the JSON, no preamble.',
+    theoretical_min_tools: 4,
+    options: { include_tools: true },
+    timeout_ms: 5 * 60 * 1000,
+    validator: (text) => {
+      // Count key:value style lines in the result
+      const colons = (text?.match(/["']?\w[\w\s]+["']?\s*:\s*["[]/g) || []).length;
+      const knuth = v.containsAny(text, ['Knuth', 'Stanford', 'Turing']);
+      const passed = colons >= 5 && knuth;
+      return { passed, score: Math.min(1, colons / 8 * 0.7 + (knuth ? 0.3 : 0)), details: `kvPairs=${colons}, hasKnuthFacts=${knuth}` };
+    },
+  },
+  {
+    id: 'W4',
+    name: '抽取 — Google 搜索结果（过滤广告）',
+    category: 'extraction',
+    dimension: 'extraction',
+    task: 'Open https://www.google.com/search?q=react+hooks+tutorial. Extract the top 5 ORGANIC search results (skip any sponsored/ad results). For each output: title, url, description. Output as a JSON array. Output ONLY the JSON, no preamble.',
+    theoretical_min_tools: 4,
+    options: { include_tools: true },
+    timeout_ms: 5 * 60 * 1000,
+    validator: (text) => {
+      const urls = v.countURLs(text);
+      const j = v.hasJSONArray(text, 5);
+      const noAd = v.containsNone(text, ['Sponsored', 'Ad·', 'sponsor']).passed;
+      const passed = urls >= 5 && j.passed && noAd;
+      return { passed, score: Math.min(1, (urls >= 5 ? 0.4 : urls / 12) + (j.passed ? 0.4 : 0) + (noAd ? 0.2 : 0)), details: `urls=${urls}, items=${j.count}, noAd=${noAd}` };
+    },
+  },
+
+  // ── B. Page Manipulation (W5-W7) ──
+  {
+    id: 'W5',
+    name: '操控 — TodoMVC 完整流程',
+    category: 'manipulation',
+    dimension: 'manipulation',
+    task: 'Open https://todomvc.com/examples/react/dist/. Add 5 todos: "buy milk", "write report", "call dentist", "fix bug", "read book". Then mark items 1 and 3 as complete. Then delete item 5 ("read book"). Finally, report the final state by reading the page: how many active items, how many completed items, and list all remaining items. Output format: "active: N, completed: M, items: [...]"',
+    theoretical_min_tools: 16,
+    options: { include_tools: true },
+    timeout_ms: 6 * 60 * 1000,
+    validator: (text) => {
+      const lower = (text || '').toLowerCase();
+      const hasActive = /active.*[:：]\s*2|2\s*(items?\s*)?(left|active)/i.test(text || '');
+      const hasCompleted = /completed.*[:：]\s*2|2\s*completed/i.test(text || '');
+      const hasMilk = lower.includes('milk');
+      const hasNoBook = !lower.includes('read book') || lower.includes('delete') || lower.includes('removed');
+      const passed = hasActive && hasCompleted && hasMilk;
+      return { passed, score: (hasActive ? 0.4 : 0) + (hasCompleted ? 0.3 : 0) + (hasMilk ? 0.2 : 0) + (hasNoBook ? 0.1 : 0), details: `active=${hasActive}, completed=${hasCompleted}, milk=${hasMilk}` };
+    },
+  },
+  {
+    id: 'W6',
+    name: '操控 — 多 tab 编排',
+    category: 'manipulation',
+    dimension: 'manipulation',
+    task: 'Use tabs_create three times to open: (1) https://developer.mozilla.org, (2) https://react.dev, (3) https://vuejs.org. After each opens, read its page title. Then close the second tab (react.dev). Finally report all three titles in order, and which tab is now closed. Output format: "MDN title: ..., React title: ..., Vue title: ..., closed: react".',
+    theoretical_min_tools: 9,
+    options: { include_tools: true },
+    timeout_ms: 6 * 60 * 1000,
+    validator: (text) => {
+      const lower = (text || '').toLowerCase();
+      const hasMDN = lower.includes('mdn') || lower.includes('mozilla');
+      const hasReact = lower.includes('react');
+      const hasVue = lower.includes('vue');
+      const hasClosed = lower.includes('closed') || lower.includes('close');
+      const passed = hasMDN && hasReact && hasVue && hasClosed;
+      return { passed, score: [hasMDN, hasReact, hasVue, hasClosed].filter(Boolean).length / 4, details: `mdn=${hasMDN}, react=${hasReact}, vue=${hasVue}, closed=${hasClosed}` };
+    },
+  },
+  {
+    id: 'W7',
+    name: '操控 — HN 多分区切换',
+    category: 'manipulation',
+    dimension: 'manipulation',
+    task: 'Open https://news.ycombinator.com. Click the "show" link in the top nav (Show HN section), read the first headline. Then click the "ask" link (Ask HN section), read its first headline. Then click "newest", read its first headline. Finally output all three headlines, labeled by section. Format: "Show: <headline>; Ask: <headline>; Newest: <headline>".',
+    theoretical_min_tools: 9,
+    options: { include_tools: true },
+    timeout_ms: 6 * 60 * 1000,
+    validator: (text) => {
+      const lower = (text || '').toLowerCase();
+      const sections = ['show', 'ask', 'newest'].filter(s => lower.includes(s + ':') || lower.includes(s + ' hn') || lower.includes(s + '：')).length;
+      const headlines = (text || '').split(/[;\n；]/).filter(line => line.trim().length > 10).length;
+      const passed = sections >= 3 && headlines >= 3;
+      return { passed, score: sections / 3 * 0.6 + Math.min(headlines / 3, 1) * 0.4, details: `sectionsLabeled=${sections}, headlines=${headlines}` };
+    },
+  },
+
+  // ── C. Complex Forms (W8-W10) ──
+  {
+    id: 'W8',
+    name: '表单 — httpbin 完整字段',
+    category: 'forms',
+    dimension: 'forms',
+    task: 'Open https://httpbin.org/forms/post. Fill ALL form fields using batch_form_input where possible: customer name = "Alice Wong", telephone = "13800138000", email = "alice@example.com", size = "medium" (radio), pizza toppings = "bacon" AND "cheese" (two checkboxes), preferred delivery time = "13:30", delivery date = "2026-12-31", comments = "no onions please". Do NOT submit. After filling, read the form back and report the filled values. Output ONLY a JSON object of {fieldName: value} pairs.',
+    theoretical_min_tools: 6,
+    options: { include_tools: true },
+    timeout_ms: 6 * 60 * 1000,
+    validator: (text) => {
+      const phrases = ['alice', '13800138000', 'medium', 'bacon', 'cheese', '13:30', 'no onions'];
+      const lower = (text || '').toLowerCase();
+      const present = phrases.filter(p => lower.includes(p.toLowerCase())).length;
+      const passed = present >= 7;
+      return { passed, score: present / phrases.length, details: `valuesPresent=${present}/${phrases.length}` };
+    },
+  },
+  {
+    id: 'W9',
+    name: '表单 — 下拉/单选/多选混合',
+    category: 'forms',
+    dimension: 'forms',
+    task: 'Open https://www.w3schools.com/html/tryit.asp?filename=tryhtml_form_submit. Click "Run >>" button to load the form. Switch focus to the iframe with id "iframeResult". Inside that frame: fill firstname = "John", lastname = "Doe", then submit. Report the URL the form submitted to (visible after submit) and any echoed values.',
+    theoretical_min_tools: 8,
+    options: { include_tools: true },
+    timeout_ms: 6 * 60 * 1000,
+    validator: (text) => {
+      const lower = (text || '').toLowerCase();
+      const hasJohn = lower.includes('john');
+      const hasDoe = lower.includes('doe');
+      const hasURL = v.countURLs(text) >= 1;
+      const passed = hasJohn && hasDoe && hasURL;
+      return { passed, score: (hasJohn ? 0.35 : 0) + (hasDoe ? 0.35 : 0) + (hasURL ? 0.3 : 0), details: `john=${hasJohn}, doe=${hasDoe}, url=${hasURL}` };
+    },
+  },
+  {
+    id: 'W10',
+    name: '表单 — 日期时间 + 校验反馈',
+    category: 'forms',
+    dimension: 'forms',
+    task: 'Open https://demoqa.com/automation-practice-form. Fill: First Name = "Test", Last Name = "User", Email = "test@example.com", Mobile = "1234567890", Date of Birth (calendar input) = "15 Jun 1990". Skip the rest. Click Submit. Report whatever the result modal/dialog shows. If the page is blocked or doesn\'t load, report that explicitly.',
+    theoretical_min_tools: 9,
+    options: { include_tools: true },
+    timeout_ms: 6 * 60 * 1000,
+    validator: (text) => {
+      const lower = (text || '').toLowerCase();
+      const hasTest = lower.includes('test');
+      const hasUser = lower.includes('user');
+      const hasEmail = lower.includes('test@example.com') || lower.includes('@example');
+      const hasResult = v.containsAny(text, ['submitted', 'thanks', 'success', 'modal', 'dialog', 'blocked', 'failed']);
+      const passed = hasTest && hasUser && hasResult;
+      return { passed, score: (hasTest ? 0.25 : 0) + (hasUser ? 0.25 : 0) + (hasEmail ? 0.25 : 0) + (hasResult ? 0.25 : 0), details: `name=${hasTest && hasUser}, email=${hasEmail}, result=${hasResult}` };
+    },
+  },
+
+  // ── D. Long Workflows (W11-W12) ──
+  {
+    id: 'W11',
+    name: '工作流 — GitHub issue 三步筛选',
+    category: 'workflow',
+    dimension: 'workflow',
+    task: 'Open https://github.com/microsoft/vscode/issues. The page should already show open issues. Click the "Labels" filter in the toolbar, find and select the "bug" label. Wait for results to update. Then extract the top 3 visible issues. For each output: issue_number (the #1234 form), title, comments_count. Output as JSON array. Output ONLY the JSON, no preamble.',
+    theoretical_min_tools: 8,
+    options: { include_tools: true },
+    timeout_ms: 7 * 60 * 1000,
+    validator: (text) => {
+      const numbers = (text?.match(/#\d{3,}/g) || []).length;
+      const j = v.hasJSONArray(text, 3);
+      const passed = numbers >= 3 && j.count >= 3;
+      return { passed, score: Math.min(1, (numbers >= 3 ? 0.5 : numbers / 6) + (j.passed ? 0.5 : j.count / 6)), details: `issueRefs=${numbers}, items=${j.count}` };
+    },
+  },
+  {
+    id: 'W12',
+    name: '工作流 — Stack Overflow 搜索 + 答案抽取',
+    category: 'workflow',
+    dimension: 'workflow',
+    task: 'Open https://stackoverflow.com/search?q=javascript+closure. Click the FIRST question result to open it. On the question page: (1) extract a 1-sentence summary of the question, (2) find the accepted answer (green checkmark), extract the first code block from it, (3) extract a 1-sentence summary of the accepted answer. Output as JSON: {question_summary, answer_code, answer_summary}.',
+    theoretical_min_tools: 7,
+    options: { include_tools: true },
+    timeout_ms: 7 * 60 * 1000,
+    validator: (text) => {
+      const lower = (text || '').toLowerCase();
+      const hasClosure = lower.includes('closure') || lower.includes('scope') || lower.includes('function');
+      const hasCode = /```|<code>|function\s*\(|var\s+\w|const\s+\w|=>\s*{/.test(text || '');
+      const hasJSON = /\{[\s\S]*"?question[_\s]?summary/i.test(text || '');
+      const passed = hasClosure && hasCode && hasJSON;
+      return { passed, score: (hasClosure ? 0.35 : 0) + (hasCode ? 0.35 : 0) + (hasJSON ? 0.3 : 0), details: `topic=${hasClosure}, code=${hasCode}, jsonShape=${hasJSON}` };
+    },
+  },
+
+  // ── E. Devtools (W13-W14) ──
+  {
+    id: 'W13',
+    name: 'Devtools — 网络请求抽取',
+    category: 'devtools',
+    dimension: 'devtools',
+    task: 'Open https://jsonplaceholder.typicode.com/. The page describes a fake REST API. Click the link/anchor for "/posts" or "/posts/1" if present (otherwise navigate to https://jsonplaceholder.typicode.com/posts/1). Wait for the response. Then call read_network_requests and identify the JSON API endpoint that was fetched. Output: HTTP method + full URL + response status code. Format: "METHOD URL → STATUS".',
+    theoretical_min_tools: 5,
+    options: { include_tools: true },
+    timeout_ms: 5 * 60 * 1000,
+    validator: (text) => {
+      const hasMethod = /\b(GET|POST|PUT|DELETE)\b/.test(text || '');
+      const hasURL = /jsonplaceholder/.test(text || '') || v.countURLs(text) >= 1;
+      const hasStatus = /\b(200|201|2\d\d|404|3\d\d)\b/.test(text || '');
+      const passed = hasMethod && hasURL && hasStatus;
+      return { passed, score: (hasMethod ? 0.34 : 0) + (hasURL ? 0.33 : 0) + (hasStatus ? 0.33 : 0), details: `method=${hasMethod}, url=${hasURL}, status=${hasStatus}` };
+    },
+  },
+  {
+    id: 'W14',
+    name: 'Devtools — 控制台错误抓取',
+    category: 'devtools',
+    dimension: 'devtools',
+    task: 'Open https://example.com. Use javascript_tool to execute this exact code: `setTimeout(() => { throw new Error("test_error_from_perf_W14"); }, 50);` then wait briefly. Then call read_console_messages. Find the error and report: the error message, and the first stack frame (file/line if any). Output format: "Error: <message>; Stack: <first frame>".',
+    theoretical_min_tools: 5,
+    options: { include_tools: true },
+    timeout_ms: 4 * 60 * 1000,
+    validator: (text) => {
+      const lower = (text || '').toLowerCase();
+      const hasError = lower.includes('test_error_from_perf_w14') || lower.includes('test_error') || lower.includes('error:');
+      const hasStack = lower.includes('stack') || lower.includes('at ') || lower.includes('.js');
+      const passed = hasError && hasStack;
+      return { passed, score: (hasError ? 0.6 : 0) + (hasStack ? 0.4 : 0), details: `errMsg=${hasError}, stackFrame=${hasStack}` };
+    },
   },
 ];
 
@@ -238,6 +576,25 @@ function analyzeRun(parsed, rtt_ms, scenario) {
   const redundant_calls = Math.max(0, total_tools - min_tools);
   const ok = completed && tool_errors === 0;
 
+  // ── Result-correctness validation ──
+  const fullResult = typeof parsed.result === 'string' ? parsed.result : '';
+  let validation = null;
+  if (typeof scenario.validator === 'function' && completed) {
+    try {
+      const out = scenario.validator(fullResult, { tools: calls, results });
+      validation = {
+        passed: !!out?.passed,
+        score: typeof out?.score === 'number' ? Math.max(0, Math.min(1, out.score)) : (out?.passed ? 1 : 0),
+        details: out?.details || '',
+      };
+    } catch (e) {
+      validation = { passed: false, score: 0, details: `validator threw: ${e.message}` };
+    }
+  } else if (typeof scenario.validator === 'function') {
+    // task didn't complete — automatic fail
+    validation = { passed: false, score: 0, details: `task status=${parsed.status}` };
+  }
+
   return {
     ok,
     status: parsed.status,
@@ -261,7 +618,9 @@ function analyzeRun(parsed, rtt_ms, scenario) {
     tool_errors,
     redundant_calls,
     reconfirm_before_click,
-    result_text: typeof parsed.result === 'string' ? parsed.result.slice(0, 200) : null,
+    result_text: fullResult.slice(0, 500),  // longer slice for inspection
+    full_result_len: fullResult.length,
+    validation,
     error: parsed.error || null,
   };
 }
@@ -276,13 +635,14 @@ async function runOnce(scenario, extraBody = {}) {
     ...(scenario.options || {}),
     ...extraBody,
   };
+  const timeoutMs = scenario.timeout_ms || FETCH_TIMEOUT_MS;
   let response;
   try {
     response = await fetchWithTimeout(HOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
+    }, timeoutMs);
   } catch (e) {
     return { ok: false, rtt_ms: performance.now() - t0, http_error: true, error: `fetch: ${e.message}`, total_tools: 0 };
   }
@@ -301,10 +661,18 @@ async function runOnce(scenario, extraBody = {}) {
 function computeStats(runs) {
   const ok_runs = runs.filter(r => r.ok);
   const rtts = ok_runs.map(r => r.rtt_ms);
+  const validated_runs = ok_runs.filter(r => r.validation);
+  const passed_runs = validated_runs.filter(r => r.validation.passed);
+  const scores = validated_runs.map(r => r.validation.score);
   return {
     n: runs.length,
     success: ok_runs.length,
     success_rate: runs.length ? ok_runs.length / runs.length : 0,
+    // Validator pass rate (only meaningful for scenarios with a validator)
+    validated_n: validated_runs.length,
+    passed_n: passed_runs.length,
+    pass_rate: validated_runs.length ? passed_runs.length / validated_runs.length : null,
+    avg_score: scores.length ? fmt(avg(scores)) : null,
     rtt_p50: Math.round(pct(rtts, 0.5)),
     rtt_p95: Math.round(pct(rtts, 0.95)),
     rtt_min: rtts.length ? Math.round(Math.min(...rtts)) : 0,
@@ -326,21 +694,29 @@ function computeStats(runs) {
 }
 
 async function runStandardScenario(scenario, n) {
-  log(`\n▶ ${scenario.id}: ${scenario.name}  (n=${n}, dim=${scenario.dimension})`);
+  log(`\n▶ ${scenario.id}: ${scenario.name}  (n=${n}, cat=${scenario.category || '?'}, dim=${scenario.dimension})`);
   const runs = [];
   for (let i = 1; i <= n; i++) {
     logRaw(`  [${scenario.id} ${i}/${n}] `);
     const r = await runOnce(scenario);
     runs.push(r);
-    const summary = r.ok
-      ? `✓ rtt=${Math.round(r.rtt_ms)}ms tools=${r.total_tools} rp=${r.read_page_count} ss=${r.screenshot_count} click=${r.click_count} red=${r.redundant_calls}`
-      : `✗ rtt=${Math.round(r.rtt_ms)}ms ERR=${(r.error || r.status || '').slice(0, 60)}`;
+    let summary;
+    if (r.ok) {
+      const validTag = r.validation
+        ? (r.validation.passed ? ' ✓PASS' : ` ✗FAIL(score=${r.validation.score.toFixed(2)})`)
+        : '';
+      summary = `✓ rtt=${Math.round(r.rtt_ms)}ms tools=${r.total_tools} rp=${r.read_page_count} ss=${r.screenshot_count} click=${r.click_count} red=${r.redundant_calls}${validTag}`;
+    } else {
+      summary = `✗ rtt=${Math.round(r.rtt_ms)}ms ERR=${(r.error || r.status || '').slice(0, 60)}`;
+    }
     log(summary);
     if (i < n) await new Promise(rs => setTimeout(rs, INTER_RUN_DELAY_MS));
   }
   let stats = computeStats(runs);
 
-  if (n < N_LONGTAIL && stats.rtt_p50 > 0 && stats.rtt_p95 / stats.rtt_p50 > 3) {
+  if (n < N_LONGTAIL && stats.rtt_p50 > 0 && stats.rtt_p95 / stats.rtt_p50 > 3 && !scenario.validator) {
+    // Long-tail extension only for atomic scenarios (no validator). Workflow
+    // scenarios are too slow/expensive to extend automatically.
     log(`  ⤷ long tail detected (p95/p50=${(stats.rtt_p95 / stats.rtt_p50).toFixed(2)}), extending to N=${N_LONGTAIL}`);
     for (let i = n + 1; i <= N_LONGTAIL; i++) {
       logRaw(`  [${scenario.id} ${i}/${N_LONGTAIL}] `);
@@ -354,7 +730,17 @@ async function runStandardScenario(scenario, n) {
     }
     stats = computeStats(runs);
   }
-  return { id: scenario.id, name: scenario.name, dimension: scenario.dimension, theoretical_min_tools: scenario.theoretical_min_tools, decisiveness: !!scenario.decisiveness, stats, runs };
+  return {
+    id: scenario.id,
+    name: scenario.name,
+    category: scenario.category || 'atomic',
+    dimension: scenario.dimension,
+    theoretical_min_tools: scenario.theoretical_min_tools,
+    decisiveness: !!scenario.decisiveness,
+    has_validator: typeof scenario.validator === 'function',
+    stats,
+    runs,
+  };
 }
 
 // ── S6: Reconnect resilience (auto: kills native-host, polls for SW auto-reconnect) ──
@@ -496,12 +882,15 @@ async function runS7() {
 
 function mdStandardSection(r) {
   const s = r.stats;
+  const passLine = (s.pass_rate != null)
+    ? `- **Validator**: passed ${s.passed_n}/${s.validated_n} (${(s.pass_rate * 100).toFixed(0)}%), avg score=${s.avg_score}\n`
+    : '';
   return `### ${r.id} — ${r.name}
 
-- 维度: \`${r.dimension}\`
+- 维度: \`${r.dimension}\`  |  分类: \`${r.category || 'atomic'}\`
 - 理论最小 tool 调用: ${r.theoretical_min_tools}
 - N: ${s.n}, 成功: ${s.success}, 成功率: ${(s.success_rate * 100).toFixed(1)}%
-- **RTT**: p50=**${s.rtt_p50}ms**, p95=**${s.rtt_p95}ms**, avg=${s.rtt_avg}ms, min=${s.rtt_min}ms, max=${s.rtt_max}ms
+${passLine}- **RTT**: p50=**${s.rtt_p50}ms**, p95=**${s.rtt_p95}ms**, avg=${s.rtt_avg}ms, min=${s.rtt_min}ms, max=${s.rtt_max}ms
 ${s.server_ms_p50 != null ? `- server-side p50: ${s.server_ms_p50}ms\n` : ''}- 工具调用 (avg): total=${s.avg_total_tools}, read_page=${s.avg_read_page}, screenshot=${s.avg_screenshot}, find=${s.avg_find}, click=${s.avg_click}, form_input=${s.avg_form_input}
 - **冗余调用** (avg): ${s.avg_redundant}  |  **click 前重复确认** (avg): ${s.avg_reconfirm}
 - 重复 read_page 的运行占比: ${(s.pct_runs_with_repeated_read_page * 100).toFixed(1)}%  |  含 screenshot 的运行占比: ${(s.pct_runs_with_screenshot * 100).toFixed(1)}%
@@ -552,13 +941,47 @@ function mdDecisivenessHighlight(results) {
 }
 
 function mdSummaryTable(allResults) {
-  let md = `## 总览（端到端 RTT + 工具开销）\n\n`;
-  md += `| ID | 维度 | n | 成功率 | RTT p50 | RTT p95 | avg tools | redundant | 备注 |\n`;
-  md += `|---|---|---|---|---|---|---|---|---|\n`;
+  let md = `## 总览（端到端 RTT + 工具开销 + 校验通过）\n\n`;
+  md += `| ID | 分类 | n | 成功率 | 校验通过 | avg score | RTT p50 | RTT p95 | avg tools | redundant |\n`;
+  md += `|---|---|---|---|---|---|---|---|---|---|\n`;
   for (const r of allResults) {
     if (!r.stats) continue;
     const s = r.stats;
-    md += `| ${r.id} | ${r.dimension} | ${s.n} | ${(s.success_rate * 100).toFixed(0)}% | ${s.rtt_p50}ms | ${s.rtt_p95}ms | ${s.avg_total_tools} | ${s.avg_redundant} | ${r.decisiveness ? '决策维度' : ''} |\n`;
+    const validated = s.pass_rate != null ? `${s.passed_n}/${s.validated_n} (${(s.pass_rate * 100).toFixed(0)}%)` : '—';
+    const score = s.avg_score != null ? s.avg_score : '—';
+    md += `| ${r.id} | ${r.category || 'atomic'} | ${s.n} | ${(s.success_rate * 100).toFixed(0)}% | ${validated} | ${score} | ${s.rtt_p50}ms | ${s.rtt_p95}ms | ${s.avg_total_tools} | ${s.avg_redundant} |\n`;
+  }
+  md += `\n`;
+  return md;
+}
+
+function mdCategorySummary(allResults) {
+  // Aggregate per-category pass rate, avg RTT, avg tool count
+  const byCat = {};
+  for (const r of allResults) {
+    if (!r.stats) continue;
+    const cat = r.category || 'atomic';
+    if (!byCat[cat]) byCat[cat] = { scenarios: 0, total_runs: 0, validated: 0, passed: 0, scores: [], rtts: [], tools: [] };
+    byCat[cat].scenarios++;
+    byCat[cat].total_runs += r.stats.n;
+    if (r.stats.validated_n) {
+      byCat[cat].validated += r.stats.validated_n;
+      byCat[cat].passed += r.stats.passed_n;
+      if (r.stats.avg_score != null) byCat[cat].scores.push(r.stats.avg_score);
+    }
+    byCat[cat].rtts.push(r.stats.rtt_p50);
+    byCat[cat].tools.push(r.stats.avg_total_tools);
+  }
+  let md = `## 分类汇总\n\n`;
+  md += `| 分类 | 场景数 | 总运行数 | 校验通过 | 平均 score | 平均 p50 RTT | 平均 tools |\n`;
+  md += `|---|---|---|---|---|---|---|\n`;
+  const order = ['atomic', 'extraction', 'manipulation', 'forms', 'workflow', 'devtools', 'decisiveness'];
+  const sorted = Object.keys(byCat).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  for (const cat of sorted) {
+    const c = byCat[cat];
+    const passLine = c.validated ? `${c.passed}/${c.validated} (${(c.passed / c.validated * 100).toFixed(0)}%)` : '—';
+    const score = c.scores.length ? fmt(avg(c.scores)) : '—';
+    md += `| ${cat} | ${c.scenarios} | ${c.total_runs} | ${passLine} | ${score} | ${Math.round(avg(c.rtts))}ms | ${fmt(avg(c.tools))} |\n`;
   }
   md += `\n`;
   return md;
@@ -600,8 +1023,11 @@ async function main() {
   );
 
   for (const scenario of standardScenarios) {
+    // Per-scenario N: explicit override > category default > CLI N
+    const scenarioN = scenario.n_override
+      ?? (argMap.n ? N : (scenario.category ? defaultNForCategory(scenario.category) : N));
     try {
-      const r = await runStandardScenario(scenario, N);
+      const r = await runStandardScenario(scenario, scenarioN);
       results.push(r);
     } catch (e) {
       log(`  ✗ ${scenario.id} threw: ${e.message}`);
@@ -646,6 +1072,7 @@ async function main() {
   md += `- chromeConnected: ${health.chromeConnected}\n`;
   md += `- server-side timing: ${results.some(r => r.runs?.some(x => x.server_ms != null)) ? '有数据' : '**未启用** (CLAWLINE_TIMING=1 + 重启 native-host 后再跑)'}\n\n`;
   md += mdSummaryTable(results);
+  md += mdCategorySummary(results);
   md += mdDecisivenessHighlight(results);
   md += `## 各场景明细\n\n`;
   for (const r of results) {
