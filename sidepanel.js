@@ -1303,7 +1303,10 @@ async function getTargetTab() {
   if (lockedTabId) {
     try {
       const tab = await chrome.tabs.get(lockedTabId);
-      if (tab && !tab.url?.startsWith('chrome://')) return lockedTabId;
+      // Trust an explicit lock even if URL is chrome:// (e.g. newtab pages
+      // the hook caller intends to navigate away from). The chrome:// guard
+      // below only applies to auto-discovery, not explicit hook-set locks.
+      if (tab) return lockedTabId;
     } catch {}
     lockedTabId = null;
   }
