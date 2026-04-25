@@ -269,9 +269,16 @@ function saveConversations() {
   idbSet('activeConvId', activeConvId).catch(e => console.warn('Save activeConvId failed:', e));
 }
 
-function createConversation() {
+function createConversation(tabId) {
   const id = 'conv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-  allConversations[id] = { id, title: 'New conversation', messages: [], displayMessages: [], updatedAt: Date.now() };
+  allConversations[id] = {
+    id,
+    title: 'New conversation',
+    messages: [],
+    displayMessages: [],
+    updatedAt: Date.now(),
+    tabId: typeof tabId === 'number' ? tabId : null,
+  };
   activeConvId = id;
   saveConversations();
   return id;
@@ -336,7 +343,8 @@ function renderConversationList() {
     const div = document.createElement('div');
     div.className = 'conv-item' + (conv.id === activeConvId ? ' active' : '');
     const ago = formatTimeAgo(conv.updatedAt);
-    div.innerHTML = `<span class="conv-title">${escapeHtml(conv.title)}</span><span class="conv-time">${ago}</span><button class="conv-delete" data-id="${conv.id}" title="Delete">&times;</button>`;
+    const tabBadge = conv.tabId ? `<span class="conv-tab" title="tab ${conv.tabId}">#${String(conv.tabId).slice(-4)}</span>` : '';
+    div.innerHTML = `${tabBadge}<span class="conv-title">${escapeHtml(conv.title)}</span><span class="conv-time">${ago}</span><button class="conv-delete" data-id="${conv.id}" title="Delete">&times;</button>`;
     div.addEventListener('click', (e) => {
       if (e.target.classList.contains('conv-delete')) { e.stopPropagation(); deleteConversation(e.target.dataset.id); return; }
       switchConversation(conv.id);
@@ -1195,6 +1203,27 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === currentWindowId) currentWindowId = null;
+});
+
+// Auto-switch sidepanel to the conversation associated with the active tab.
+// When user clicks a different tab in this window, find the most recent
+// conversation that ran on that tab and surface it. Best-effort: skipped if
+// agent is mid-task or no matching conversation exists.
+chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+  try {
+    if (windowId !== currentWindowId) return;
+    if (isRunning) return; // don't yank UI while a task is running
+    if (allConversations[activeConvId]?.tabId === tabId) return; // already on it
+    // Find most recent conversation for this tab
+    const candidates = Object.values(allConversations)
+      .filter(c => c.tabId === tabId)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (candidates.length === 0) return;
+    if (candidates[0].id === activeConvId) return;
+    switchConversation(candidates[0].id);
+  } catch (e) {
+    console.warn('[clawline] tab-activated auto-switch failed:', e.message);
+  }
 });
 // Detach debugger when the sidepanel unloads (closed, reloaded) — otherwise the
 // "Clawline started debugging this browser" banner lingers until Chrome exits.
@@ -2348,9 +2377,13 @@ async function handleHookMessage(msg) {
   // Switch or create conversation
   if (msg.conversationId && allConversations[msg.conversationId]) {
     switchConversation(msg.conversationId);
+    // Update the existing conversation's tab association if hook re-pinned it
+    if (msg.tabId && allConversations[msg.conversationId]) {
+      allConversations[msg.conversationId].tabId = msg.tabId;
+    }
   } else if (msg.action !== 'continue_task') {
     if (activeConvId && conversation.length > 0) saveCurrentState();
-    createConversation();
+    createConversation(msg.tabId);
     conversation = [];
     messagesEl.innerHTML = '';
     renderConversationList();

@@ -26,6 +26,8 @@ body { font-family: Georgia, 'Times New Roman', 'Noto Serif SC', 'Source Han Ser
 .conv-item:hover .conv-delete { display: block; }
 .conv-item.active .conv-delete { display: block; color: rgba(255,255,255,0.6); }
 .conv-item .conv-delete:hover { color: #e74c3c; }
+.conv-item .conv-tab { font-size: 9px; font-family: ui-monospace, monospace; color: #999; background: #f0ede8; border-radius: 3px; padding: 1px 4px; flex-shrink: 0; }
+.conv-item.active .conv-tab { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.18); }
 
 /* Main */
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
