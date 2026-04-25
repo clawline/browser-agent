@@ -155,6 +155,22 @@ function sendErrorLog(error) {
   } catch {}
 }
 
+// Force-write an API failure to native-host error.log, bypassing the 5s dedupe
+// in sendErrorLog so back-to-back failures with the same message still surface.
+function reportApiError(message, detail) {
+  if (!swPort) return;
+  try {
+    swPort.postMessage({
+      type: 'error_log',
+      error: {
+        message: `[api] ${message}` + (detail ? ` :: ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 600)}` : ''),
+        timestamp: new Date().toISOString(),
+        from: 'sidepanel-api',
+      },
+    });
+  } catch {}
+}
+
 window.addEventListener('error', (e) => {
   sendErrorLog({ message: e.message, source: e.filename, lineno: e.lineno, colno: e.colno, stack: e.error?.stack || '' });
 });
@@ -457,7 +473,7 @@ const stepsSelect = document.getElementById('steps-select');
 
 // Restore settings
 const savedModel = localStorage.getItem('clawline-model');
-if (savedModel) modelSelect.value = savedModel;
+if (savedModel && [...modelSelect.options].some(o => o.value === savedModel)) modelSelect.value = savedModel;
 const savedSteps = localStorage.getItem('clawline-steps');
 if (savedSteps) stepsSelect.value = savedSteps;
 thinkingEnabled = localStorage.getItem('clawline-thinking') === 'true';
@@ -2150,6 +2166,22 @@ async function sendMessage() {
 }
 
 async function runAgentLoop() {
+  // ── DIAGNOSTIC (perf-baseline triage) — remove after debugging ──
+  const _diag = (label, data) => {
+    try {
+      swPort?.postMessage({
+        type: 'error_log',
+        error: {
+          message: `[DIAG ${label}] ${typeof data === 'string' ? data : JSON.stringify(data).slice(0, 600)}`,
+          from: 'sidepanel-diag',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch {}
+    try { console.log(`[DIAG ${label}]`, data); } catch {}
+  };
+  _diag('enter', { API_URL, hasKey: !!API_KEY, model: getModel(), thinking: thinkingEnabled, fast: fastMode, convLen: conversation.length, maxLoops: getMaxLoops() });
+
   setRunning(true);
   abortController = new AbortController();
 
@@ -2184,14 +2216,31 @@ async function runAgentLoop() {
       };
       if (thinkingEnabled) body.thinking = { type: 'enabled', budget_tokens: THINKING_BUDGET };
 
-      const res = await fetchWithRetry(`${API_URL}/v1/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', ...(API_KEY ? { 'x-api-key': API_KEY } : { 'Authorization': 'Bearer dev-local-token' }) },
-        body: JSON.stringify(body),
-        signal: abortController.signal,
-      });
+      _diag('pre-fetch', { step, url: `${API_URL}/v1/messages`, model: body.model, msgsLen: messagesForAPI.length, bodyBytes: JSON.stringify(body).length });
+      const _t0 = performance.now();
 
-      if (!res.ok) { addMsg('system', `API Error ${res.status}: ${await res.text()}`); break; }
+      let res;
+      try {
+        res = await fetchWithRetry(`${API_URL}/v1/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', ...(API_KEY ? { 'x-api-key': API_KEY } : { 'Authorization': 'Bearer dev-local-token' }) },
+          body: JSON.stringify(body),
+          signal: abortController.signal,
+        });
+      } catch (e) {
+        _diag('fetch-throw', { step, ms: Math.round(performance.now() - _t0), err: e?.message, name: e?.name });
+        throw e;
+      }
+
+      _diag('post-fetch', { step, ms: Math.round(performance.now() - _t0), status: res.status, ok: res.ok, ct: res.headers.get('content-type') });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        _diag('non-ok-break', { step, status: res.status, errText: errText.slice(0, 400) });
+        reportApiError(`HTTP ${res.status} from ${API_URL}/v1/messages`, { status: res.status, body: errText.slice(0, 600), model: body.model, msgsLen: messagesForAPI.length });
+        addMsg('system', `API Error ${res.status}: ${errText}`);
+        break;
+      }
 
       const blocks = [];
       let textDiv = null, textBuf = '', toolBuf = null, stopReason = null;
@@ -2263,11 +2312,12 @@ async function runAgentLoop() {
         if (_pending.size) _flush();
       }
 
-      if (abortController.signal.aborted) break;
+      if (abortController.signal.aborted) { _diag('aborted-after-sse', { step, blocksLen: blocks.length }); break; }
+      _diag('post-sse', { step, blocksLen: blocks.length, types: blocks.map(b => b.type), stopReason });
       if (blocks.length > 0) conversation.push({ role: 'assistant', content: blocks });
 
       const toolUses = blocks.filter(b => b.type === 'tool_use');
-      if (toolUses.length === 0) break;
+      if (toolUses.length === 0) { _diag('no-tools-break', { step, blocksLen: blocks.length, stopReason }); break; }
 
       // Execute tools
       const results = [];
@@ -2297,7 +2347,7 @@ async function runAgentLoop() {
       if (stopReason === 'end_turn') break;
     }
   } catch (err) {
-    if (err.name !== 'AbortError') addMsg('system', `Error: ${err.message}`);
+    if (err.name !== 'AbortError') { try { _diag('outer-catch', { name: err?.name, message: err?.message, stack: (err?.stack || '').split('\n').slice(0, 4).join(' | ') }); } catch {} reportApiError(`fetch threw: ${err?.name || 'Error'}: ${err?.message}`, { stack: (err?.stack || '').split('\n').slice(0, 4).join(' | ') }); addMsg('system', `Error: ${err.message}`); }
   } finally {
     // Fix orphaned tool_use blocks: if assistant message has tool_use
     // without matching tool_results, append stubs so the API won't reject next request.
@@ -2389,10 +2439,14 @@ async function handleHookMessage(msg) {
     renderConversationList();
   }
 
-  // Override model if specified
-  if (msg.model) {
-    modelSelect.value = msg.model;
-  }
+  // Per-task override of API config (apiUrl / apiKey / model). NOT persisted to
+  // localStorage — restored in finally so the sidepanel UI stays untouched.
+  const _savedApiUrl = API_URL;
+  const _savedApiKey = API_KEY;
+  const _savedModelValue = modelSelect.value;
+  if (msg.apiUrl) API_URL = msg.apiUrl;
+  if (typeof msg.apiKey === 'string') API_KEY = msg.apiKey;
+  if (msg.model) modelSelect.value = msg.model;
 
   // Collapse previous groups
   messagesEl.querySelectorAll('.tool-group:not(.collapsed)').forEach(g => {
@@ -2412,8 +2466,14 @@ async function handleHookMessage(msg) {
   // Send "started" response
   sendHookResponse(taskId, 'started', null);
 
-  // Run agent loop
-  await runAgentLoop();
+  // Run agent loop — try/finally restores per-task API overrides
+  try {
+    await runAgentLoop();
+  } finally {
+    API_URL = _savedApiUrl;
+    API_KEY = _savedApiKey;
+    modelSelect.value = _savedModelValue;
+  }
 
   // Build completed response with optional extra data
   const newMessages = conversation.slice(convLenBefore);

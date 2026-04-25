@@ -21,6 +21,7 @@ const HTTP_PORT = parseInt(process.env.CLAWLINE_HOOK_PORT || '4821', 10);
 const REQUEST_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 const ERROR_LOG_PATH = join(dirname(fileURLToPath(import.meta.url)), 'error.log');
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5 MB
+const TIMING_ENABLED = process.env.CLAWLINE_TIMING === '1';
 
 let errorStream = createWriteStream(ERROR_LOG_PATH, { flags: 'a' });
 
@@ -248,6 +249,10 @@ const server = createServer(async (req, res) => {
         windowId: body.windowId || null,
         conversationId: body.conversationId || null,
         model: body.model || null,
+        apiUrl: body.apiUrl || null,
+        apiKey: body.apiKey || null,
+        include_tools: body.include_tools === true,
+        include_screenshot: body.include_screenshot === true,
       };
 
       // Create pending request
@@ -272,11 +277,22 @@ const server = createServer(async (req, res) => {
       };
       res.on('close', () => { if (!res.writableEnded) onClientGone(); });
 
+      // Timing (dev-only via CLAWLINE_TIMING=1): record server-side processing window
+      const _t_received = TIMING_ENABLED ? Date.now() : 0;
+
       // Send to Chrome
       sendToChrome(msg);
 
       // Wait for result
       const result = await promise;
+      if (TIMING_ENABLED) {
+        const _t_responded = Date.now();
+        result._timing = {
+          received_at: _t_received,
+          responded_at: _t_responded,
+          server_ms: _t_responded - _t_received,
+        };
+      }
       const httpStatus = result.status === 'error' ? 500 : 200;
       sendJSON(res, httpStatus, result);
       return;

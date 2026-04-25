@@ -1,0 +1,81 @@
+{
+  "env": {
+    "timestamp": "2026-04-25T00:05:20.101Z",
+    "git_head": null,
+    "hook_url": "http://127.0.0.1:4822/hook",
+    "health": {
+      "name": "clawline-hook",
+      "version": "1.0.0",
+      "chromeConnected": true,
+      "port": 4822,
+      "pendingTasks": 0
+    },
+    "sessions": [
+      {
+        "windowId": 420604605
+      }
+    ],
+    "n_default": 1,
+    "n_longtail": 30
+  },
+  "results": [
+    {
+      "id": "S1",
+      "name": "导航 + DOM 抓取基线",
+      "dimension": "baseline",
+      "theoretical_min_tools": 3,
+      "decisiveness": false,
+      "stats": {
+        "n": 1,
+        "success": 1,
+        "success_rate": 1,
+        "rtt_p50": 7432,
+        "rtt_p95": 7432,
+        "rtt_min": 7432,
+        "rtt_max": 7432,
+        "rtt_avg": 7432,
+        "server_ms_p50": null,
+        "avg_total_tools": 0,
+        "avg_read_page": 0,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": true,
+          "status": "completed",
+          "rtt_ms": 7432.223125,
+          "server_ms": null,
+          "received_at": null,
+          "responded_at": null,
+          "total_tools": 0,
+          "navigate_count": 0,
+          "read_page_count": 0,
+          "find_count": 0,
+          "form_input_count": 0,
+          "get_text_count": 0,
+          "turn_answer_count": 0,
+          "screenshot_count": 0,
+          "click_count": 0,
+          "scroll_count": 0,
+          "type_count": 0,
+          "key_count": 0,
+          "wait_count": 0,
+          "tool_errors": 0,
+          "redundant_calls": 0,
+          "reconfirm_before_click": 0,
+          "result_text": "<turn_answer_start>\n</turn_answer_start>\n\nDone. The page contains one interactive element: a link to https://iana.org/domains/example (ref_1).",
+          "error": null,
+          "http_status": 200
+        }
+      ]
+    }
+  ]
+}
