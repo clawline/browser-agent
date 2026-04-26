@@ -18,6 +18,11 @@ import { dirname, join } from 'node:path';
 // ── Config ──
 
 const HTTP_PORT = parseInt(process.env.CLAWLINE_HOOK_PORT || '4821', 10);
+// Bind address: default 0.0.0.0 (all interfaces — LAN reachable).
+// Set CLAWLINE_HOOK_HOST=127.0.0.1 to restrict to localhost only.
+// SECURITY NOTE: with 0.0.0.0 anyone on the LAN can POST /hook and drive
+// the agent. Only run on trusted networks or behind a firewall.
+const HTTP_HOST = process.env.CLAWLINE_HOOK_HOST || '0.0.0.0';
 const REQUEST_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 const ERROR_LOG_PATH = join(dirname(fileURLToPath(import.meta.url)), 'error.log');
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -394,17 +399,17 @@ server.on('error', (err) => {
       return;
     }
     log(`Port ${actualPort - 1} in use, trying ${actualPort}...`);
-    server.listen(actualPort, '127.0.0.1');
+    server.listen(actualPort, HTTP_HOST);
   } else {
     log('HTTP server error:', err.message);
   }
 });
 
-server.listen(HTTP_PORT, '127.0.0.1');
+server.listen(HTTP_PORT, HTTP_HOST);
 
 server.on('listening', () => {
   actualPort = server.address().port;
-  log(`HTTP server listening on http://127.0.0.1:${actualPort}`);
+  log(`HTTP server listening on http://${HTTP_HOST}:${actualPort}` + (HTTP_HOST === '0.0.0.0' ? ' (LAN reachable)' : ''));
   sendToChrome({ type: 'hook_port', port: actualPort });
 });
 
