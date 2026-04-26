@@ -467,6 +467,44 @@ const SCENARIOS = [
       return { passed, score: (hasError ? 0.6 : 0) + (hasStack ? 0.4 : 0), details: `errMsg=${hasError}, stackFrame=${hasStack}` };
     },
   },
+
+  // ── F. One-shot complex flow (W15) ──
+  // User-driven scenario: complete spec given upfront, agent must execute
+  // every step in order without re-planning, re-asking, or re-confirming.
+  // Tests "do the whole thing in one pass" capability — minimal model
+  // round-trips for a real multi-step content scrape.
+  {
+    id: 'W15',
+    name: '一次性 — GitHub 多页导航 + 抽取',
+    category: 'workflow',
+    dimension: 'one-shot',
+    task: `Execute this full task in one pass. Do NOT explain plans, do NOT ask for confirmation, do NOT re-read pages between steps. Just do it:
+
+STEP 1: Navigate to https://github.com/microsoft/vscode
+STEP 2: Click the "Releases" link in the right sidebar (or navigate to https://github.com/microsoft/vscode/releases if the link is hard to find)
+STEP 3: On the releases page, identify the LATEST release (top of list, marked "Latest"). Extract its tag name (e.g. "1.95.0") and release date.
+STEP 4: Click into that latest release to open its full release notes page.
+STEP 5: From the release notes, extract the first 3 changelog bullet points or section headings (whatever shows up first as a list).
+STEP 6: Output ONLY a JSON object: {"tag": "...", "date": "...", "highlights": ["...", "...", "..."]}. No preamble, no explanation. Just the JSON.
+
+If any step fails (network, page structure unexpected, etc.), output a JSON with an "error" field explaining which step failed. Do not retry from scratch.`,
+    theoretical_min_tools: 8,
+    options: { include_tools: true },
+    timeout_ms: 6 * 60 * 1000,
+    validator: (text) => {
+      // Look for JSON shape: tag, date, highlights with 3 items
+      const hasTag = /"tag"\s*:\s*"[^"]+"/i.test(text || '');
+      const hasDate = /"date"\s*:\s*"[^"]+"/i.test(text || '');
+      // 3 highlights as JSON array OR error field
+      const j = v.hasJSONArray(text, 3);
+      const hasHighlights = /"highlights"\s*:/i.test(text || '') && j.count >= 3;
+      const hasError = /"error"\s*:/i.test(text || '');
+      const versionLike = /v?\d+\.\d+(\.\d+)?/.test(text || '');
+      const passed = (hasTag && hasDate && hasHighlights) || hasError;
+      const score = hasError ? 0.5 : ((hasTag ? 0.3 : 0) + (hasDate ? 0.2 : 0) + (hasHighlights ? 0.4 : 0) + (versionLike ? 0.1 : 0));
+      return { passed, score: Math.min(1, score), details: `tag=${hasTag}, date=${hasDate}, highlights=${hasHighlights}, ver=${versionLike}, err=${hasError}` };
+    },
+  },
 ];
 
 // ── Helpers ──

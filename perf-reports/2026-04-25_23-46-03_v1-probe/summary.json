@@ -1,0 +1,317 @@
+{
+  "env": {
+    "timestamp": "2026-04-25T23:45:49.055Z",
+    "git_head": null,
+    "hook_url": "http://127.0.0.1:4821/hook",
+    "health": {
+      "name": "clawline-hook",
+      "version": "1.0.0",
+      "pid": 22363,
+      "hostStartedAt": "2026-04-25T17:40:26.108Z",
+      "chromeConnected": true,
+      "port": 4821,
+      "pendingTasks": 0,
+      "extensionName": "Clawline Browser Agent",
+      "extensionVersion": "0.1.0",
+      "windows": [
+        {
+          "windowId": 420611949,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 12,
+          "tabs": [
+            {
+              "id": 420611962,
+              "title": "localhost",
+              "url": "http://localhost:3001/admin/tickets",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612184,
+              "title": "扩展程序",
+              "url": "chrome://extensions/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612116,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612117,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612118,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612119,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612120,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612121,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612122,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612123,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612124,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612185,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420611962,
+            "title": "localhost",
+            "url": "http://localhost:3001/admin/tickets"
+          }
+        }
+      ],
+      "sessionsFetchedAt": "2026-04-25T23:45:48.867Z"
+    },
+    "sessions": [
+      {
+        "windowId": 420611949,
+        "focused": false,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 12,
+        "tabs": [
+          {
+            "id": 420611962,
+            "title": "localhost",
+            "url": "http://localhost:3001/admin/tickets",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612184,
+            "title": "扩展程序",
+            "url": "chrome://extensions/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612116,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612117,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612118,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612119,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612120,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612121,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612122,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612123,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612124,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612185,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420611962,
+          "title": "localhost",
+          "url": "http://localhost:3001/admin/tickets"
+        }
+      }
+    ],
+    "n_default": 1,
+    "n_longtail": 30
+  },
+  "results": [
+    {
+      "id": "W1",
+      "name": "抽取 — HN 前 10 条故事 JSON",
+      "category": "extraction",
+      "dimension": "extraction",
+      "theoretical_min_tools": 4,
+      "decisiveness": false,
+      "has_validator": true,
+      "stats": {
+        "n": 1,
+        "success": 1,
+        "success_rate": 1,
+        "validated_n": 1,
+        "passed_n": 1,
+        "pass_rate": 1,
+        "avg_score": 1,
+        "rtt_p50": 14263,
+        "rtt_p95": 14263,
+        "rtt_min": 14263,
+        "rtt_max": 14263,
+        "rtt_avg": 14263,
+        "server_ms_p50": null,
+        "avg_total_tools": 2,
+        "avg_read_page": 0,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": true,
+          "status": "completed",
+          "rtt_ms": 14263.123791,
+          "server_ms": null,
+          "received_at": null,
+          "responded_at": null,
+          "total_tools": 2,
+          "navigate_count": 1,
+          "read_page_count": 0,
+          "find_count": 0,
+          "form_input_count": 0,
+          "get_text_count": 1,
+          "turn_answer_count": 0,
+          "screenshot_count": 0,
+          "click_count": 0,
+          "scroll_count": 0,
+          "type_count": 0,
+          "key_count": 0,
+          "wait_count": 0,
+          "tool_errors": 0,
+          "redundant_calls": 0,
+          "reconfirm_before_click": 0,
+          "result_text": "Perfect! I've extracted the top 10 stories from Hacker News. Here's the JSON array:\n\n```json\n[\n  {\n    \"rank\": 1,\n    \"title\": \"USB Cheat Sheet\",\n    \"url\": \"fabiensanglard.net\",\n    \"score\": 66,\n    \"author\": \"gwerbret\",\n    \"comments_count\": 17,\n    \"age\": \"1 hour ago\"\n  },\n  {\n    \"rank\": 2,\n    \"title\": \"The Free Universal Construction Kit\",\n    \"url\": \"fffff.at\",\n    \"score\": 238,\n    \"author\": \"robinhouston\",\n    \"comments_count\": 41,\n    \"age\": \"8 hours ago\"\n  },\n  {\n    \"rank\": 3,\n    \"t",
+          "full_result_len": 2163,
+          "validation": {
+            "passed": true,
+            "score": 1,
+            "details": "items=10, titles=true, scores=true"
+          },
+          "error": null,
+          "http_status": 200
+        }
+      ]
+    }
+  ]
+}

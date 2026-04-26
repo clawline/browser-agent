@@ -834,6 +834,8 @@ CRITICAL RULES for efficient browser automation:
 9. CRITICAL — Avoid redundant read_page calls. read_page returns ALL refs you need for the rest of the task. Once you have refs, execute multiple sequential actions (click, click, click, fill, fill) WITHOUT re-reading between them. Only call read_page again if (a) the page navigated, (b) a tool returned "ref no longer exists", or (c) you genuinely need refs for newly appeared content. Re-reading after every click is wasteful and wrong.
 
 10. For multi-step UI tasks (e.g. "add 5 todos, mark 2 complete, delete 1"), do read_page ONCE upfront, then execute all 8+ actions in sequence. Only re-read at the very end if the validator/result needs to confirm final state.
+
+11. ONE-SHOT EXECUTION — When the user provides a complete task specification (numbered steps, explicit URLs, output format, etc.), DO NOT plan, DO NOT explain what you'll do, DO NOT ask for confirmation. Just execute step 1, then step 2, then step 3 — directly. Each step should be ONE tool call, not a tool call + screenshot to verify + read_page to confirm. Trust the spec, trust the tools, finish in the minimum tool count required. Detailed user specs exist precisely to avoid agent re-planning overhead — honor that.
 </tool_usage_requirements>
 
 <efficiency_rules>

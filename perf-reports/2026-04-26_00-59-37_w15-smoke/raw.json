@@ -1,0 +1,815 @@
+{
+  "env": {
+    "timestamp": "2026-04-26T00:57:58.152Z",
+    "git_head": null,
+    "hook_url": "http://127.0.0.1:4821/hook",
+    "health": {
+      "name": "clawline-hook",
+      "version": "1.0.0",
+      "pid": 49137,
+      "hostStartedAt": "2026-04-25T23:54:20.535Z",
+      "chromeConnected": true,
+      "port": 4821,
+      "pendingTasks": 0,
+      "extensionName": "Clawline Browser Agent",
+      "extensionVersion": "0.1.0",
+      "windows": [
+        {
+          "windowId": 420611949,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 14,
+          "tabs": [
+            {
+              "id": 420611962,
+              "title": "facebook/react: The library for web and native user interfaces.",
+              "url": "https://github.com/facebook/react",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612184,
+              "title": "扩展程序",
+              "url": "chrome://extensions/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612116,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612117,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612118,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612119,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612120,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612121,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612122,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612123,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612124,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612185,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612186,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612187,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420611962,
+            "title": "facebook/react: The library for web and native user interfaces.",
+            "url": "https://github.com/facebook/react"
+          }
+        }
+      ],
+      "sessionsFetchedAt": "2026-04-26T00:01:40.373Z"
+    },
+    "sessions": [
+      {
+        "windowId": 420611949,
+        "focused": true,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 24,
+        "tabs": [
+          {
+            "id": 420611962,
+            "title": "Example Domain",
+            "url": "https://example.com/",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612184,
+            "title": "扩展程序",
+            "url": "chrome://extensions/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612116,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612117,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612118,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612119,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612120,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612121,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612122,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612123,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612124,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612185,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612186,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612187,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612188,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612189,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612190,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612191,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612192,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612193,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612194,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612195,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612196,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612197,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420611962,
+          "title": "Example Domain",
+          "url": "https://example.com/"
+        }
+      }
+    ],
+    "n_default": 1,
+    "n_longtail": 30
+  },
+  "results": [
+    {
+      "id": "W15",
+      "name": "一次性 — GitHub 多页导航 + 抽取",
+      "category": "workflow",
+      "dimension": "one-shot",
+      "theoretical_min_tools": 8,
+      "decisiveness": false,
+      "has_validator": true,
+      "stats": {
+        "n": 1,
+        "success": 1,
+        "success_rate": 1,
+        "validated_n": 1,
+        "passed_n": 0,
+        "pass_rate": 0,
+        "avg_score": 0.6,
+        "rtt_p50": 99320,
+        "rtt_p95": 99320,
+        "rtt_min": 99320,
+        "rtt_max": 99320,
+        "rtt_avg": 99320,
+        "server_ms_p50": null,
+        "avg_total_tools": 24,
+        "avg_read_page": 3,
+        "avg_screenshot": 7,
+        "avg_find": 2,
+        "avg_form_input": 0,
+        "avg_click": 2,
+        "avg_redundant": 16,
+        "avg_reconfirm": 2,
+        "pct_runs_with_repeated_read_page": 1,
+        "pct_runs_with_screenshot": 1,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": true,
+          "status": "completed",
+          "rtt_ms": 99320.49650000001,
+          "server_ms": null,
+          "received_at": null,
+          "responded_at": null,
+          "total_tools": 24,
+          "navigate_count": 6,
+          "read_page_count": 3,
+          "find_count": 2,
+          "form_input_count": 0,
+          "get_text_count": 2,
+          "turn_answer_count": 0,
+          "screenshot_count": 7,
+          "click_count": 2,
+          "scroll_count": 0,
+          "type_count": 0,
+          "key_count": 0,
+          "wait_count": 0,
+          "tool_errors": 0,
+          "redundant_calls": 16,
+          "reconfirm_before_click": 2,
+          "result_text": "Perfect! I now have all the information I need. Let me extract the key details:\n\n**Tag:** 1.117.0\n\n**Date:** April 22, 2026\n\n**First 3 highlights/bullet points:**\n1. \"BYOK for Business and Enterprise: Connect your own API keys for preferred or specialized models directly in VS Code chat.\"\n2. \"Incremental chat rendering: Experience more fluid streaming of chat responses.\"\n3. \"Terminal improvements: Launch Copilot CLI from any terminal profile.\"\n\nNow I'll output the JSON as requested:\n\n```json\n{\"t",
+          "full_result_len": 840,
+          "validation": {
+            "passed": false,
+            "score": 0.6,
+            "details": "tag=true, date=true, highlights=false, ver=true, err=false"
+          },
+          "error": null,
+          "http_status": 200,
+          "raw_tools": [
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "screenshot"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01BknneVAoF91YLWxaJXmLef",
+              "is_error": false,
+              "texts": [],
+              "hasImage": true
+            },
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "https://github.com/microsoft/vscode",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_018NGeGhiwYmjM9g71fQu5gr",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://github.com/microsoft/vscode (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "screenshot"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01UKq9iYxgHqwthQiTBqZekq",
+              "is_error": false,
+              "texts": [],
+              "hasImage": true
+            },
+            {
+              "type": "call",
+              "name": "find",
+              "input": {
+                "query": "Releases link in sidebar"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_0174QHDFNzNsDjwHcmvuuL94",
+              "is_error": false,
+              "texts": [
+                "No elements found matching \"Releases link in sidebar\""
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "read_page",
+              "input": {
+                "filter": "interactive"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_018GQjmqjESiFjByJx4gKcLL",
+              "is_error": false,
+              "texts": [
+                "[Viewport: 1444x1233]\nlink \"Skip to content\" [ref_1] href=\"#start-of-content\"\nbutton [ref_2] type=\"button\"\nlink [ref_3] href=\"/\" type=\"button\"\nlink [ref_4] href=\"/microsoft\"\nlink [ref_5] href=\"/microsoft/vscode\"\nbutton \"Search or jump to…\" [ref_6] type=\"button\"\nlink [ref_7] href=\"/copilot\" type=\"button\"\nbutton \"Open Copilot…\" [ref_8] type=\"button\"\nbutton \"Open agents panel\" [ref_9] type=\"button\"\nbutton [ref_10] type=\"button\"\nlink [ref_11] href=\"/issues\" type=\"button\"\nlink [ref_12] href=\"/pulls\" type=\"button\"\nlink [ref_13] href=\"/repos\" type=\"button\"\nlink [ref_14] href=\"/notifications\" type=\"button\"\nbutton [ref_15] type=\"button\"\nlink [ref_16] href=\"/microsoft/vscode\"\nlink [ref_17] href=\"/microsoft/vscode/issues\"\nlink [ref_18] href=\"/microsoft/vscode/pulls\"\nlink [ref_19] href=\"/microsoft/vscode/agents?author=Restry\"\nlink [ref_20] href=\"/microsoft/vscode/actions\"\nlink [ref_21] href=\"/microsoft/vscode/projects\"\nlink [ref_22] href=\"/microsoft/vscode/models\"\nlink [ref_23] href=\"/microsoft/vscode/wiki\"\nlink [ref_24] href=\"/microsoft/vscode/security\"\nlink [ref_25] href=\"/microsoft/vscode/pulse\"\ngeneric [ref_26]\n link \"vscode\" [ref_27] href=\"/microsoft/vscode\"\n button \"Watch: Participating in microsoft/vscode\" [ref_28] type=\"button\"\n link \"Fork\" [ref_29] href=\"/microsoft/vscode/fork\"\n generic [ref_30]\n  button \"See your forks of this repository\" [ref_31]\n button \"Star this repository (184260)\" [ref_32] type=\"submit\"\n button [ref_33] type=\"button\"\n button \"main branch\" [ref_34] type=\"button\"\n link [ref_35] href=\"/microsoft/vscode/branches\" type=\"button\"\n link [ref_36] href=\"/microsoft/vscode/tags\" type=\"button\"\n combobox \"Go to file\" [ref_37] type=\"text\" placeholder=\"Go to file\"\n button \"Add file\" [ref_38] type=\"button\"\n button [ref_39] type=\"button\"\n link [ref_40] href=\"/bhavyaus\"\n link \"commits by bhavyaus\" [ref_41] href=\"/microsoft/vscode/commits?author=bhavyaus\"\n link \"Fix empty detailedOutcome in summarization failure telemetry (\" [ref_42] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link \"#312552\" [ref_43] href=\"https://github.com/microsoft/vscode/pull/312552\"\n link \")\" [ref_44] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n button [ref_45] type=\"button\"\n button [ref_46] type=\"button\"\n link \"Commit 0cb2f1d\" [ref_47] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link [ref_48] href=\"/microsoft/vscode/commits/main/\"\n link \".agents/skills/launch, (Directory)\" [ref_49] href=\"/microsoft/vscode/tree/main/.agents/skills/launch\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_50] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_51] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \"#306461\" [ref_52] href=\"https://github.com/microsoft/vscode/issues/306461\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_53] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \"#306922\" [ref_54] href=\"https://github.com/microsoft/vscode/pull/306922\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_55] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \".config, (Directory)\" [ref_56] href=\"/microsoft/vscode/tree/main/.config\"\n link \"chore: suppress node warnings (#274905) * chore: suppress node CFG warnings * Add lines from gdnsupp\" [ref_57] href=\"/microsoft/vscode/commit/18d828e5d596e56b516fac7baa53e4b32cf087be\"\n link \"#274905\" [ref_58] href=\"https://github.com/microsoft/vscode/pull/274905\"\n link \"chore: suppress node warnings (#274905) * chore: suppress node CFG warnings * Add lines from gdnsupp\" [ref_59] href=\"/microsoft/vscode/commit/18d828e5d596e56b516fac7baa53e4b32cf087be\"\n link \".devcontainer, (Directory)\" [ref_60] href=\"/microsoft/vscode/tree/main/.devcontainer\"\n link \"Bump ghcr.io/devcontainers/features/rust from 1.3.3 to 1.5.0 (#292849) Bumps ghcr.io/devcontainers/f\" [ref_61] href=\"/microsoft/vscode/commit/527178c09735dea4ce55520e9efc2fa69406d393\"\n link \"#292849\" [ref_62] href=\"https://github.com/microsoft/vscode/pull/292849\"\n link \"Bump ghcr.io/devcontainers/features/rust from 1.3.3 to 1.5.0 (#292849) Bumps ghcr.io/devcontainers/f\" [ref_63] href=\"/microsoft/vscode/commit/527178c09735dea4ce55520e9efc2fa69406d393\"\n link \".eslint-plugin-local, (Directory)\" [ref_64] href=\"/microsoft/vscode/tree/main/.eslint-plugin-local\"\n link \"Add eslint rule for ServicesAccessor after await (#307263)\" [ref_65] href=\"/microsoft/vscode/commit/3f2c82db55cae69284c6297fb562d97ca931875d\"\n link \"#307263\" [ref_66] href=\"https://github.com/microsoft/vscode/pull/307263\"\n link \"Add eslint rule for ServicesAccessor after await (#307263)\" [ref_67] href=\"/microsoft/vscode/commit/3f2c82db55cae69284c6297fb562d97ca931875d\"\n link \".github, (Directory)\" [ref_68] href=\"/microsoft/vscode/tree/main/.github\"\n link \"mobile: drop unneeded !important from phone-layout CSS Remove 22 !important declarations from mobile\" [ref_69] href=\"/microsoft/vscode/commit/86601591bdc2a90216b122cb4e8891d2a19eb6fd\"\n link \".vscode, (Directory)\" [ref_70] href=\"/microsoft/vscode/tree/main/.vscode\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_71] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_72] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_73] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"#311672\" [ref_74] href=\"https://github.com/microsoft/vscode/pull/311672\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_75] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"build, (Directory)\" [ref_76] href=\"/microsoft/vscode/tree/main/build\"\n link \"Engineering - increase timeout for the web stage (#312355)\" [ref_77] href=\"/microsoft/vscode/commit/c01e67a07a0bcaebd2e29d49fa6067437bda24c2\"\n link \"#312355\" [ref_78] href=\"https://github.com/microsoft/vscode/pull/312355\"\n link \"Engineering - increase timeout for the web stage (#312355)\" [ref_79] href=\"/microsoft/vscode/commit/c01e67a07a0bcaebd2e29d49fa6067437bda24c2\"\n link \"cli, (Directory)\" [ref_80] href=\"/microsoft/vscode/tree/main/cli\"\n link \"Bump openssl from 0.10.75 to 0.10.78 in /cli (#312161) Bumps [openssl](https://github.com/rust-opens\" [ref_81] href=\"/microsoft/vscode/commit/8f547df8f69cc6f4a24dc6106b8c3a3a0b28dfd6\"\n link \"#312161\" [ref_82] href=\"https://github.com/microsoft/vscode/pull/312161\"\n link \"Bump openssl from 0.10.75 to 0.10.78 in /cli (#312161) Bumps [openssl](https://github.com/rust-opens\" [ref_83] href=\"/microsoft/vscode/commit/8f547df8f69cc6f4a24dc6106b8c3a3a0b28dfd6\"\n link \"extensions, (Directory)\" [ref_84] href=\"/microsoft/vscode/tree/main/extensions\"\n link \"Fix empty detailedOutcome in summarization failure telemetry (#312552) Fall back to response.type wh\" [ref_85] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link \"#312552\" [ref_86] href=\"https://github.com/microsoft/vscode/pull/312552\"\n link \"Fix empty detailedOutcome in summarization failure telemetry (#312552) Fall back to response.type wh\" [ref_87] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link \"remote, (Directory)\" [ref_88] href=\"/microsoft/vscode/tree/main/remote\"\n link \"terminal: Disable read all by default (#311850) * adding allowRead and testing with defaults * Renam\" [ref_89] href=\"/microsoft/vscode/commit/bb09e7379b060060bb6fa6b1a9cc9aee4fe34b83\"\n link \"#311850\" [ref_90] href=\"https://github.com/microsoft/vscode/pull/311850\"\n link \"terminal: Disable read all by default (#311850) * adding allowRead and testing with defaults * Renam\" [ref_91] href=\"/microsoft/vscode/commit/bb09e7379b060060bb6fa6b1a9cc9aee4fe34b83\"\n link \"resources, (Directory)\" [ref_92] href=\"/microsoft/vscode/tree/main/resources\"\n link \"fix: post-install script doesn't check for existing sources (#311795) * fix: post-install script doe\" [ref_93] href=\"/microsoft/vscode/commit/fda5c965e16f66ad42ede5fed24ebcfc2c0f26a0\"\n link \"#311795\" [ref_94] href=\"https://github.com/microsoft/vscode/pull/311795\"\n link \"fix: post-install script doesn't check for existing sources (#311795) * fix: post-install script doe\" [ref_95] href=\"/microsoft/vscode/commit/fda5c965e16f66ad42ede5fed24ebcfc2c0f26a0\"\n link \"scripts, (Directory)\" [ref_96] href=\"/microsoft/vscode/tree/main/scripts\"\n link \"Fixes for the chat perf pipeline (#311605)\" [ref_97] href=\"/microsoft/vscode/commit/cc33dc6e7c4ba63e36b1d64d1d662c1e261e3850\"\n link \"#311605\" [ref_98] href=\"https://github.com/microsoft/vscode/pull/311605\"\n link \"Fixes for the chat perf pipeline (#311605)\" [ref_99] href=\"/microsoft/vscode/commit/cc33dc6e7c4ba63e36b1d64d1d662c1e261e3850\"\n link \"src, (Directory)\" [ref_100] href=\"/microsoft/vscode/tree/main/src\"\n link \"Fix reasoning text rendering when restoring agent host sessions (#312559) * Fix: preserve reasoning \" [ref_101] href=\"/microsoft/vscode/commit/3109dfc3fc3a3f554d4164cabc042ef54c371007\"\n link \"#312559\" [ref_102] href=\"https://github.com/microsoft/vscode/pull/312559\"\n link \"test, (Directory)\" [ref_103] href=\"/microsoft/vscode/tree/main/test\"\n link \"Dismiss welcome dialog again. (#312421) Co-authored-by: Copilot <copilot@github.com>\" [ref_104] href=\"/microsoft/vscode/commit/2723584a56aed0e0e01565278d1521b3d086dc1a\"\n link \"#312421\" [ref_105] href=\"https://github.com/microsoft/vscode/pull/312421\"\n link \"Dismiss welcome dialog again. (#312421) Co-authored-by: Copilot <copilot@github.com>\" [ref_106] href=\"/microsoft/vscode/commit/2723584a56aed0e0e01565278d1521b3d086dc1a\"\n link \".editorconfig, (File)\" [ref_107] href=\"/microsoft/vscode/blob/main/.editorconfig\"\n link \"No forcing tabsize on users\" [ref_108] href=\"/microsoft/vscode/commit/a04ddffb9dee33d27f308529b6f4359a592db45d\"\n link \".eslint-ignore, (File)\" [ref_109] href=\"/microsoft/vscode/blob/main/.eslint-ignore\"\n link \"Revert \\\"Use main eslint config for copilot extension too\\\"\" [ref_110] href=\"/microsoft/vscode/commit/1a54933643b4e9387f31cf7ecac5f92d812578b2\"\n link \".git-blame-ignore-revs, (File)\" [ref_111] href=\"/microsoft/vscode/blob/main/.git-blame-ignore-revs\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_112] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_113] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_114] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \"#227190\" [ref_115] href=\"https://github.com/microsoft/vscode/pull/227190\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_116] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \".gitattributes, (File)\" [ref_117] href=\"/microsoft/vscode/blob/main/.gitattributes\"\n link \"removes checked in baseline images, as they are now tracked by the screenshot service\" [ref_118] href=\"/microsoft/vscode/commit/1a6b425b58c5f77dd5162360e17d0ab96f424340\"\n link \".gitignore, (File)\" [ref_119] href=\"/microsoft/vscode/blob/main/.gitignore\"\n link \"Add performance tests (#309700)\" [ref_120] href=\"/microsoft/vscode/commit/ec992baa49e5f8568757e8d9aa9fdeedb8ebef9e\"\n link \"#309700\" [ref_121] href=\"https://github.com/microsoft/vscode/pull/309700\"\n link \"Add performance tests (#309700)\" [ref_122] href=\"/microsoft/vscode/commit/ec992baa49e5f8568757e8d9aa9fdeedb8ebef9e\"\n link \".lsifrc.json, (File)\" [ref_123] href=\"/microsoft/vscode/blob/main/.lsifrc.json\"\n link \"Add lsifrc file\" [ref_124] href=\"/microsoft/vscode/commit/dd782c3a54ff9d3719e483e7ed1e7229aa830e1c\"\n link \".mailmap, (File)\" [ref_125] href=\"/microsoft/vscode/blob/main/.mailmap\"\n link \"Remove self from notify, classifier, events, etc.\" [ref_126] href=\"/microsoft/vscode/commit/8657f4358e7cdd996afff38060075cea16e96841\"\n link \".mention-bot, (File)\" [ref_127] href=\"/microsoft/vscode/blob/main/.mention-bot\"\n link \"update mention bot configuration fixes #8822\" [ref_128] href=\"/microsoft/vscode/commit/797317d8705e556ddb413e89035e494719ab30f5\"\n link \".npmrc, (File)\" [ref_129] href=\"/microsoft/vscode/blob/main/.npmrc\"\n link \"feat: enable shared safestorage on windows (#311418) * feat: enable shared safestorage on windows * \" [ref_130] href=\"/microsoft/vscode/commit/a1d3ff15f47f2fd64c818e6802436a54aa5ec239\"\n link \"#311418\" [ref_131] href=\"https://github.com/microsoft/vscode/pull/311418\"\n link \"feat: enable shared safestorage on windows (#311418) * feat: enable shared safestorage on windows * \" [ref_132] href=\"/microsoft/vscode/commit/a1d3ff15f47f2fd64c818e6802436a54aa5ec239\"\n link \"https://code.visualstudio.com\" [ref_133] href=\"https://code.visualstudio.com\"\n link \"Topic: electron\" [ref_134] href=\"/topics/electron\"\n link \"Topic: microsoft\" [ref_135] href=\"/topics/microsoft\"\n link \"Topic: editor\" [ref_136] href=\"/topics/editor\"\n link \"Topic: typescript\" [ref_137] href=\"/topics/typescript\"\n link \"Topic: visual-studio-code\" [ref_138] href=\"/topics/visual-studio-code\"\n link \"Readme\" [ref_139] href=\"#readme-ov-file\"\n link \"MIT license\" [ref_140] href=\"#MIT-1-ov-file\"\n link \"Code of conduct\" [ref_141] href=\"#coc-ov-file\"\n link \"Contributing\" [ref_142] href=\"#contributing-ov-file\"\n link \"Security policy\" [ref_143] href=\"#security-ov-file\"\n link [ref_144] href=\"/microsoft/vscode/activity\"\n link [ref_145] href=\"/microsoft/vscode/custom-properties\"\n link \"stars\" [ref_146] href=\"/microsoft/vscode/stargazers\"\n link \"watching\" [ref_147] href=\"/microsoft/vscode/watchers\"\n link \"forks\" [ref_148] href=\"/microsoft/vscode/forks\"\n link \"Report repository\" [ref_149] href=\"/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fmicrosoft%2Fvscode&report=microsoft+%28user%29\"\n link \"Releases\" [ref_150] href=\"/microsoft/vscode/releases\"\n link [ref_151] href=\"/microsoft/vscode/releases/tag/1.117.0\"\n link \"+ 207 releases\" [ref_152] href=\"/microsoft/vscode/releases\"\n link \"Deployments\" [ref_153] href=\"/microsoft/vscode/deployments\"\n link \"main\" [ref_154] href=\"/microsoft/vscode/deployments/main\"\n link \"+ more deployments\" [ref_155] href=\"/microsoft/vscode/deployments\""
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "left_click",
+                "ref": "ref_150",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01EAgSbKdFyWfX42KK2MLe4B",
+              "is_error": false,
+              "texts": [
+                "Clicked ref_150 <A> \"Releases\n      208\" [wait_for=load:already-complete]"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "screenshot"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01LT7UMVVZbbyBLaDQmcUQ5S",
+              "is_error": false,
+              "texts": [],
+              "hasImage": true
+            },
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "https://github.com/microsoft/vscode/releases",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01SHM3H476Npd91L6DUNtxk4",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://github.com/microsoft/vscode/releases (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "screenshot"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_013nrU817P6cUSpU41ibjJ66",
+              "is_error": false,
+              "texts": [],
+              "hasImage": true
+            },
+            {
+              "type": "call",
+              "name": "read_page",
+              "input": {
+                "filter": "interactive",
+                "max_chars": 1000
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01YUhZNQJJp2U9k53pgCS9AR",
+              "is_error": false,
+              "texts": [
+                "[Viewport: 1444x1233]\nlink \"Skip to content\" [ref_1] href=\"#start-of-content\"\nbutton [ref_2] type=\"submit\"\nlink \"Terms\" [ref_3] href=\"https://docs.github.com/site-policy/github-terms/github-terms-of-service\"\nlink \"Privacy\" [ref_4] href=\"https://docs.github.com/site-policy/privacy-policies/github-privacy-statement\"\nlink \"Docs\" [ref_5] href=\"https://docs.github.com\"\nlink \"Contact GitHub Support\" [ref_6] href=\"https://support.github.com\"\nbutton \"Manage cookies\" [ref_7] type=\"button\"\nbutton \"Do not share my personal information\" [ref_8] type=\"button\""
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "javascript_tool",
+              "input": {
+                "action": "javascript_exec",
+                "text": "document.body.innerHTML.substring(0, 500)"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01CvvNHNe3SoLeyS8YmhTXZv",
+              "is_error": false,
+              "texts": [
+                "\n    <div data-turbo-body=\"\" class=\"logged-in env-production page-responsive session-authentication\" style=\"word-wrap: break-word;\">\n      <div id=\"__primerPortalRoot__\" role=\"region\" style=\"z-index: 1000; position: absolute; width: 100%;\" data-turbo-permanent=\"\"></div>\n      \n\n    <div class=\"position-relative header-wrapper js-header-wrapper \">\n      <a href=\"#start-of-content\" data-skip-target-assigned=\"false\" class=\"tmp-p-3 color-bg-accent-emphasis color-fg-on-emphasis show-on-focus js-skip-"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "back",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_017dpAezq17SHLcSXSaaN5aY",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://stackoverflow.com/questions/111102/how-do-javascript-closures-work (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "https://github.com/microsoft/vscode",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01C3raN8o39TPzZUtmtfbcYh",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://github.com/microsoft/vscode (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "screenshot"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_013Mdr5jzoRhaXJXdmbLU2BS",
+              "is_error": false,
+              "texts": [],
+              "hasImage": true
+            },
+            {
+              "type": "call",
+              "name": "find",
+              "input": {
+                "query": "releases 208 link"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01LA5RxPha5U7LHLNFx9Vh1T",
+              "is_error": false,
+              "texts": [
+                "No elements found matching \"releases 208 link\""
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "read_page",
+              "input": {
+                "filter": "interactive",
+                "max_chars": 3000
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01N3eXJrGvGhs8NVA8sacxM5",
+              "is_error": false,
+              "texts": [
+                "[Viewport: 1444x1233]\nlink \"Skip to content\" [ref_1] href=\"#start-of-content\"\nbutton [ref_2] type=\"button\"\nlink [ref_3] href=\"/\" type=\"button\"\nlink [ref_4] href=\"/microsoft\"\nlink [ref_5] href=\"/microsoft/vscode\"\nbutton \"Search or jump to…\" [ref_6] type=\"button\"\nlink [ref_7] href=\"/copilot\" type=\"button\"\nbutton \"Open Copilot…\" [ref_8] type=\"button\"\nbutton \"Open agents panel\" [ref_9] type=\"button\"\nbutton [ref_10] type=\"button\"\nlink [ref_11] href=\"/issues\" type=\"button\"\nlink [ref_12] href=\"/pulls\" type=\"button\"\nlink [ref_13] href=\"/repos\" type=\"button\"\nlink [ref_14] href=\"/notifications\" type=\"button\"\nbutton [ref_15] type=\"button\"\nlink [ref_16] href=\"/microsoft/vscode\"\nlink [ref_17] href=\"/microsoft/vscode/issues\"\nlink [ref_18] href=\"/microsoft/vscode/pulls\"\nlink [ref_19] href=\"/microsoft/vscode/agents?author=Restry\"\nlink [ref_20] href=\"/microsoft/vscode/actions\"\nlink [ref_21] href=\"/microsoft/vscode/projects\"\nlink [ref_22] href=\"/microsoft/vscode/models\"\nlink [ref_23] href=\"/microsoft/vscode/wiki\"\nlink [ref_24] href=\"/microsoft/vscode/security\"\nlink [ref_25] href=\"/microsoft/vscode/pulse\"\ngeneric [ref_26]\n link \"vscode\" [ref_27] href=\"/microsoft/vscode\"\n button \"Watch: Participating in microsoft/vscode\" [ref_28] type=\"button\"\n link \"Fork\" [ref_29] href=\"/microsoft/vscode/fork\"\n generic [ref_30]\n  button \"See your forks of this repository\" [ref_31]\n button \"Star this repository (184260)\" [ref_32] type=\"submit\"\n button [ref_33] type=\"button\"\n button \"main branch\" [ref_34] type=\"button\"\n link [ref_35] href=\"/microsoft/vscode/branches\" type=\"button\"\n link [ref_36] href=\"/microsoft/vscode/tags\" type=\"button\"\n combobox \"Go to file\" [ref_37] type=\"text\" placeholder=\"Go to file\"\n button \"Add file\" [ref_38] type=\"button\"\n button [ref_39] type=\"button\"\n link [ref_40] href=\"/bhavyaus\"\n link \"commits by bhavyaus\" [ref_41] href=\"/microsoft/vscode/commits?author=bhavyaus\"\n link \"Fix empty detailedOutcome in summarization failure telemetry (\" [ref_42] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link \"#312552\" [ref_43] href=\"https://github.com/microsoft/vscode/pull/312552\"\n link \")\" [ref_44] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n button [ref_45] type=\"button\"\n button [ref_46] type=\"button\"\n link \"Commit 0cb2f1d\" [ref_47] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link [ref_48] href=\"/microsoft/vscode/commits/main/\"\n link \".agents/skills/launch, (Directory)\" [ref_49] href=\"/microsoft/vscode/tree/main/.agents/skills/launch\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_50] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_51] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \"#306461\" [ref_52] href=\"https://github.com/microsoft/vscode/issues/306461\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_53] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \"#306922\" [ref_54] href=\"https://github.com/microsoft/vscode/pull/306922\"\n link \"Sessions: Update naming (fix #306461) (#306922) * Sessions: Update naming (fix #306461) * .\" [ref_55] href=\"/microsoft/vscode/commit/17faef0d3c25db663ff888a7aac0093444e6c727\"\n link \".config, (Directory)\" [ref_56] href=\"/microsoft/vscode/tree/main/.config\"\n link \"chore: suppress node warnings (#274905) * chore: suppress node CFG warnings * Add lines from gdnsupp\" [ref_57] href=\"/microsoft/vscode/commit/18d828e5d596e56b516fac7baa53e4b32cf087be\"\n link \"#274905\" [ref_58] href=\"https://github.com/microsoft/vscode/pull/274905\"\n link \"chore: suppress node warnings (#274905) * chore: suppress node CFG warnings * Add lines from gdnsupp\" [ref_59] href=\"/microsoft/vscode/commit/18d828e5d596e56b516fac7baa53e4b32cf087be\"\n link \".devcontainer, (Directory)\" [ref_60] href=\"/microsoft/vscode/tree/main/.devcontainer\"\n link \"Bump ghcr.io/devcontainers/features/rust from 1.3.3 to 1.5.0 (#292849) Bumps ghcr.io/devcontainers/f\" [ref_61] href=\"/microsoft/vscode/commit/527178c09735dea4ce55520e9efc2fa69406d393\"\n link \"#292849\" [ref_62] href=\"https://github.com/microsoft/vscode/pull/292849\"\n link \"Bump ghcr.io/devcontainers/features/rust from 1.3.3 to 1.5.0 (#292849) Bumps ghcr.io/devcontainers/f\" [ref_63] href=\"/microsoft/vscode/commit/527178c09735dea4ce55520e9efc2fa69406d393\"\n link \".eslint-plugin-local, (Directory)\" [ref_64] href=\"/microsoft/vscode/tree/main/.eslint-plugin-local\"\n link \"Add eslint rule for ServicesAccessor after await (#307263)\" [ref_65] href=\"/microsoft/vscode/commit/3f2c82db55cae69284c6297fb562d97ca931875d\"\n link \"#307263\" [ref_66] href=\"https://github.com/microsoft/vscode/pull/307263\"\n link \"Add eslint rule for ServicesAccessor after await (#307263)\" [ref_67] href=\"/microsoft/vscode/commit/3f2c82db55cae69284c6297fb562d97ca931875d\"\n link \".github, (Directory)\" [ref_68] href=\"/microsoft/vscode/tree/main/.github\"\n link \"mobile: drop unneeded !important from phone-layout CSS Remove 22 !important declarations from mobile\" [ref_69] href=\"/microsoft/vscode/commit/86601591bdc2a90216b122cb4e8891d2a19eb6fd\"\n link \".vscode, (Directory)\" [ref_70] href=\"/microsoft/vscode/tree/main/.vscode\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_71] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_72] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_73] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"#311672\" [ref_74] href=\"https://github.com/microsoft/vscode/pull/311672\"\n link \"make `zone` the render-mode default again (#311672) Co-authored-by: Copilot <copilot@github.com>\" [ref_75] href=\"/microsoft/vscode/commit/7650a4a1ef95bafbe433aa49d35bbf37fcd774a2\"\n link \"build, (Directory)\" [ref_76] href=\"/microsoft/vscode/tree/main/build\"\n link \"Engineering - increase timeout for the web stage (#312355)\" [ref_77] href=\"/microsoft/vscode/commit/c01e67a07a0bcaebd2e29d49fa6067437bda24c2\"\n link \"#312355\" [ref_78] href=\"https://github.com/microsoft/vscode/pull/312355\"\n link \"Engineering - increase timeout for the web stage (#312355)\" [ref_79] href=\"/microsoft/vscode/commit/c01e67a07a0bcaebd2e29d49fa6067437bda24c2\"\n link \"cli, (Directory)\" [ref_80] href=\"/microsoft/vscode/tree/main/cli\"\n link \"Bump openssl from 0.10.75 to 0.10.78 in /cli (#312161) Bumps [openssl](https://github.com/rust-opens\" [ref_81] href=\"/microsoft/vscode/commit/8f547df8f69cc6f4a24dc6106b8c3a3a0b28dfd6\"\n link \"#312161\" [ref_82] href=\"https://github.com/microsoft/vscode/pull/312161\"\n link \"Bump openssl from 0.10.75 to 0.10.78 in /cli (#312161) Bumps [openssl](https://github.com/rust-opens\" [ref_83] href=\"/microsoft/vscode/commit/8f547df8f69cc6f4a24dc6106b8c3a3a0b28dfd6\"\n link \"extensions, (Directory)\" [ref_84] href=\"/microsoft/vscode/tree/main/extensions\"\n link \"Fix empty detailedOutcome in summarization failure telemetry (#312552) Fall back to response.type wh\" [ref_85] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link \"#312552\" [ref_86] href=\"https://github.com/microsoft/vscode/pull/312552\"\n link \"Fix empty detailedOutcome in summarization failure telemetry (#312552) Fall back to response.type wh\" [ref_87] href=\"/microsoft/vscode/commit/0cb2f1d44640817dc625b9e407d9376125f473b4\"\n link \"remote, (Directory)\" [ref_88] href=\"/microsoft/vscode/tree/main/remote\"\n link \"terminal: Disable read all by default (#311850) * adding allowRead and testing with defaults * Renam\" [ref_89] href=\"/microsoft/vscode/commit/bb09e7379b060060bb6fa6b1a9cc9aee4fe34b83\"\n link \"#311850\" [ref_90] href=\"https://github.com/microsoft/vscode/pull/311850\"\n link \"terminal: Disable read all by default (#311850) * adding allowRead and testing with defaults * Renam\" [ref_91] href=\"/microsoft/vscode/commit/bb09e7379b060060bb6fa6b1a9cc9aee4fe34b83\"\n link \"resources, (Directory)\" [ref_92] href=\"/microsoft/vscode/tree/main/resources\"\n link \"fix: post-install script doesn't check for existing sources (#311795) * fix: post-install script doe\" [ref_93] href=\"/microsoft/vscode/commit/fda5c965e16f66ad42ede5fed24ebcfc2c0f26a0\"\n link \"#311795\" [ref_94] href=\"https://github.com/microsoft/vscode/pull/311795\"\n link \"fix: post-install script doesn't check for existing sources (#311795) * fix: post-install script doe\" [ref_95] href=\"/microsoft/vscode/commit/fda5c965e16f66ad42ede5fed24ebcfc2c0f26a0\"\n link \"scripts, (Directory)\" [ref_96] href=\"/microsoft/vscode/tree/main/scripts\"\n link \"Fixes for the chat perf pipeline (#311605)\" [ref_97] href=\"/microsoft/vscode/commit/cc33dc6e7c4ba63e36b1d64d1d662c1e261e3850\"\n link \"#311605\" [ref_98] href=\"https://github.com/microsoft/vscode/pull/311605\"\n link \"Fixes for the chat perf pipeline (#311605)\" [ref_99] href=\"/microsoft/vscode/commit/cc33dc6e7c4ba63e36b1d64d1d662c1e261e3850\"\n link \"src, (Directory)\" [ref_100] href=\"/microsoft/vscode/tree/main/src\"\n link \"Fix reasoning text rendering when restoring agent host sessions (#312559) * Fix: preserve reasoning \" [ref_101] href=\"/microsoft/vscode/commit/3109dfc3fc3a3f554d4164cabc042ef54c371007\"\n link \"#312559\" [ref_102] href=\"https://github.com/microsoft/vscode/pull/312559\"\n link \"test, (Directory)\" [ref_103] href=\"/microsoft/vscode/tree/main/test\"\n link \"Dismiss welcome dialog again. (#312421) Co-authored-by: Copilot <copilot@github.com>\" [ref_104] href=\"/microsoft/vscode/commit/2723584a56aed0e0e01565278d1521b3d086dc1a\"\n link \"#312421\" [ref_105] href=\"https://github.com/microsoft/vscode/pull/312421\"\n link \"Dismiss welcome dialog again. (#312421) Co-authored-by: Copilot <copilot@github.com>\" [ref_106] href=\"/microsoft/vscode/commit/2723584a56aed0e0e01565278d1521b3d086dc1a\"\n link \".editorconfig, (File)\" [ref_107] href=\"/microsoft/vscode/blob/main/.editorconfig\"\n link \"No forcing tabsize on users\" [ref_108] href=\"/microsoft/vscode/commit/a04ddffb9dee33d27f308529b6f4359a592db45d\"\n link \".eslint-ignore, (File)\" [ref_109] href=\"/microsoft/vscode/blob/main/.eslint-ignore\"\n link \"Revert \\\"Use main eslint config for copilot extension too\\\"\" [ref_110] href=\"/microsoft/vscode/commit/1a54933643b4e9387f31cf7ecac5f92d812578b2\"\n link \".git-blame-ignore-revs, (File)\" [ref_111] href=\"/microsoft/vscode/blob/main/.git-blame-ignore-revs\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_112] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_113] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_114] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \"#227190\" [ref_115] href=\"https://github.com/microsoft/vscode/pull/227190\"\n link \"eng - add ESM migration commit to `.git-blame-ignore-revs` (#227190)\" [ref_116] href=\"/microsoft/vscode/commit/a6de21e1a45e970ee1f1ca9410a36b7d2af66580\"\n link \".gitattributes, (File)\" [ref_117] href=\"/microsoft/vscode/blob/main/.gitattributes\"\n link \"removes checked in baseline images, as they are now tracked by the screenshot service\" [ref_118] href=\"/microsoft/vscode/commit/1a6b425b58c5f77dd5162360e17d0ab96f424340\"\n link \".gitignore, (File)\" [ref_119] href=\"/microsoft/vscode/blob/main/.gitignore\"\n link \"Add performance tests (#309700)\" [ref_120] href=\"/microsoft/vscode/commit/ec992baa49e5f8568757e8d9aa9fdeedb8ebef9e\"\n link \"#309700\" [ref_121] href=\"https://github.com/microsoft/vscode/pull/309700\"\n link \"Add performance tests (#309700)\" [ref_122] href=\"/microsoft/vscode/commit/ec992baa49e5f8568757e8d9aa9fdeedb8ebef9e\"\n link \".lsifrc.json, (File)\" [ref_123] href=\"/microsoft/vscode/blob/main/.lsifrc.json\"\n link \"Add lsifrc file\" [ref_124] href=\"/microsoft/vscode/commit/dd782c3a54ff9d3719e483e7ed1e7229aa830e1c\"\n link \".mailmap, (File)\" [ref_125] href=\"/microsoft/vscode/blob/main/.mailmap\"\n link \"Remove self from notify, classifier, events, etc.\" [ref_126] href=\"/microsoft/vscode/commit/8657f4358e7cdd996afff38060075cea16e96841\"\n link \".mention-bot, (File)\" [ref_127] href=\"/microsoft/vscode/blob/main/.mention-bot\"\n link \"update mention bot configuration fixes #8822\" [ref_128] href=\"/microsoft/vscode/commit/797317d8705e556ddb413e89035e494719ab30f5\"\n link \".npmrc, (File)\" [ref_129] href=\"/microsoft/vscode/blob/main/.npmrc\"\n link \"feat: enable shared safestorage on windows (#311418) * feat: enable shared safestorage on windows * \" [ref_130] href=\"/microsoft/vscode/commit/a1d3ff15f47f2fd64c818e6802436a54aa5ec239\"\n link \"#311418\" [ref_131] href=\"https://github.com/microsoft/vscode/pull/311418\"\n link \"feat: enable shared safestorage on windows (#311418) * feat: enable shared safestorage on windows * \" [ref_132] href=\"/microsoft/vscode/commit/a1d3ff15f47f2fd64c818e6802436a54aa5ec239\"\n link \"https://code.visualstudio.com\" [ref_133] href=\"https://code.visualstudio.com\"\n link \"Topic: electron\" [ref_134] href=\"/topics/electron\"\n link \"Topic: microsoft\" [ref_135] href=\"/topics/microsoft\"\n link \"Topic: editor\" [ref_136] href=\"/topics/editor\"\n link \"Topic: typescript\" [ref_137] href=\"/topics/typescript\"\n link \"Topic: visual-studio-code\" [ref_138] href=\"/topics/visual-studio-code\"\n link \"Readme\" [ref_139] href=\"#readme-ov-file\"\n link \"MIT license\" [ref_140] href=\"#MIT-1-ov-file\"\n link \"Code of conduct\" [ref_141] href=\"#coc-ov-file\"\n link \"Contributing\" [ref_142] href=\"#contributing-ov-file\"\n link \"Security policy\" [ref_143] href=\"#security-ov-file\"\n link [ref_144] href=\"/microsoft/vscode/activity\"\n link [ref_145] href=\"/microsoft/vscode/custom-properties\"\n link \"stars\" [ref_146] href=\"/microsoft/vscode/stargazers\"\n link \"watching\" [ref_147] href=\"/microsoft/vscode/watchers\"\n link \"forks\" [ref_148] href=\"/microsoft/vscode/forks\"\n link \"Report repository\" [ref_149] href=\"/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fmicrosoft%2Fvscode&report=microsoft+%28user%29\"\n link \"Releases\" [ref_150] href=\"/microsoft/vscode/releases\"\n link [ref_151] href=\"/microsoft/vscode/releases/tag/1.117.0\"\n link \"+ 207 releases\" [ref_152] href=\"/microsoft/vscode/releases\"\n link \"Deployments\" [ref_153] href=\"/microsoft/vscode/deployments\"\n link \"main\" [ref_154] href=\"/microsoft/vscode/deployments/main\"\n link \"+ more deployments\" [ref_155] href=\"/microsoft/vscode/deployments\""
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "left_click",
+                "ref": "ref_151",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_019cbfzYmpf9Ld7H2ojPE3qa",
+              "is_error": false,
+              "texts": [
+                "Clicked ref_151 <A> \"\n    \n    \n\n    \n      \n        1.117.0\n        \n \" [wait_for=load:already-complete]"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "screenshot"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_0118io2YfcM1UkD2Xxj9sB34",
+              "is_error": false,
+              "texts": [],
+              "hasImage": true
+            },
+            {
+              "type": "call",
+              "name": "javascript_tool",
+              "input": {
+                "action": "javascript_exec",
+                "text": "document.body.textContent.substring(0, 1000)"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01VM5p5YLsfkbHxBkd5DNVaK",
+              "is_error": false,
+              "texts": [
+                "\n    \n      \n      \n\n    \n      Skip to content\n\n      \n    \n      \n      \n      \n\n\n\n  \n  {\"props\":{\"docsUrl\":\"https://docs.github.com/get-started/accessibility/keyboard-shortcuts\"}}\n  {\"resolvedServerColorMode\":\"day\"}\n\n\n\n\n\n\n      \n\n          \n\n\n\n\n      \n  \n        \n    \n\n        You signed in with another tab or window. Reload to refresh your session.\n        You signed out in another tab or window. Reload to refresh your session.\n        You switched accounts on another tab or window. Reload to refresh your session.\n\n      \n    \n\nDismiss alert\n\n\n  \n\n        \n          \n    \n\n  \n\n\n\n\n\n\n\n\n\n    \n  \n  \n\n\n\n\n\n\n  \n      \n        \n\n  \n    \n\n\n\n  \n\n\n  \n  \n    \n      \n\n      \n        Single sign-on to\n        Microsoft Open Source\n      \n    \n\n\n      \n        Authenticate your account by logging into\n        Microsoft Open Source’s\n        single sign-on provider.\n      \n\n\n    \n      \n      \n\n        \n    Continue\n  \n\n\n  \n\n\n\n\n\n      \n  \n\n          \n    \n        \n          Terms\n        \n\n       "
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "https://api.github.com/repos/microsoft/vscode/releases/latest",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01CgKDWn7sUN3biS4NvZ2WzH",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://api.github.com/repos/microsoft/vscode/releases/latest (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "get_page_text",
+              "input": {
+                "max_chars": 5000
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01VMnmRHMYTArqFKXWbiY8Lf",
+              "is_error": false,
+              "texts": [
+                "{\nurl: \"https://api.github.com/repos/microsoft/vscode/releases/312162617\",\nassets_url: \"https://api.github.com/repos/microsoft/vscode/releases/312162617/assets\",\nupload_url: \"https://uploads.github.com/repos/microsoft/vscode/releases/312162617/assets{?name,label}\",\nhtml_url: \"https://github.com/microsoft/vscode/releases/tag/1.117.0\",\nid: 312162617,\nauthor: \n{\nlogin: \"hediet\",\nid: 2931520,\nnode_id: \"MDQ6VXNlcjI5MzE1MjA=\",\navatar_url: \"https://avatars.githubusercontent.com/u/2931520?v=4\",\ngravatar_id: \"\",\nurl: \"https://api.github.com/users/hediet\",\nhtml_url: \"https://github.com/hediet\",\nfollowers_url: \"https://api.github.com/users/hediet/followers\",\nfollowing_url: \"https://api.github.com/users/hediet/following{/other_user}\",\ngists_url: \"https://api.github.com/users/hediet/gists{/gist_id}\",\nstarred_url: \"https://api.github.com/users/hediet/starred{/owner}{/repo}\",\nsubscriptions_url: \"https://api.github.com/users/hediet/subscriptions\",\norganizations_url: \"https://api.github.com/users/hediet/orgs\",\nrepos_url: \"https://api.github.com/users/hediet/repos\",\nevents_url: \"https://api.github.com/users/hediet/events{/privacy}\",\nreceived_events_url: \"https://api.github.com/users/hediet/received_events\",\ntype: \"User\",\nuser_view_type: \"public\",\nsite_admin: true\n},\nnode_id: \"RE_kwDOAn8RLM4Smzk5\",\ntag_name: \"1.117.0\",\ntarget_commitish: \"release/1.117\",\nname: \"1.117.0\",\ndraft: false,\nimmutable: false,\nprerelease: false,\ncreated_at: \"2026-04-21T23:12:14Z\",\nupdated_at: \"2026-04-22T10:45:03Z\",\npublished_at: \"2026-04-22T10:45:03Z\",\nassets: [ ],\ntarball_url: \"https://api.github.com/repos/microsoft/vscode/tarball/1.117.0\",\nzipball_url: \"https://api.github.com/repos/microsoft/vscode/zipball/1.117.0\",\nbody: \"https://code.visualstudio.com/updates/v1_117\",\nreactions: \n{\nurl: \"https://api.github.com/repos/microsoft/vscode/releases/312162617/reactions\",\ntotal_count: 67,\n+1: 28,\n-1: 0,\nlaugh: 7,\nhooray: 12,\nconfused: 0,\nheart: 8,\nrocket: 7,\neyes: 5\n}\n}\n+view source-"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "https://code.visualstudio.com/updates/v1_117",
+                "wait_for": "load"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01SqKkiSw1rSWMKsPHTvmZvs",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://code.visualstudio.com/updates/v1_117 (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "computer",
+              "input": {
+                "action": "screenshot"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_01Gwj9dkSxPdiEs6hVhXgbtY",
+              "is_error": false,
+              "texts": [],
+              "hasImage": true
+            },
+            {
+              "type": "call",
+              "name": "get_page_text",
+              "input": {
+                "max_chars": 3000
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_bdrk_018ngBDefWMDEEAtiMfE1sPq",
+              "is_error": false,
+              "texts": [
+                "Visual Studio Code\n\nExplore Agentic Development - Join a GitHub Copilot Dev Day near you!\n\nDismiss this update\nUPDATES \nInsiders\n1.117\n1.116\n1.115\n1.114\n1.113\n1.112\n1.111\nFebruary 2026\nJanuary 2026\nDecember 2025\nNovember 2025\nOctober 2025\nSeptember 2025\nAugust 2025\nJuly 2025\nJune 2025\nMay 2025\nApril 2025\nMarch 2025\nView All Releases\nVisual Studio Code 1.117\n\nFollow us on LinkedIn, X, Bluesky |\n\nRelease date: April 22, 2026\n\nDownloads: Windows: x64 Arm64 | Mac: Universal Intel silicon | Linux: deb rpm tarball Arm snap\n\nWelcome to the 1.117 release of Visual Studio Code. This release adds new capabilities for Copilot Enterprise and Business users and further improves the agent experience in VS Code. Here are the highlights for this release:\n\nBYOK for Business and Enterprise: Connect your own API keys for preferred or specialized models directly in VS Code chat.\n\nIncremental chat rendering: Experience more fluid streaming of chat responses.\n\nTerminal improvements: Launch Copilot CLI from any terminal profile.\n\nHappy Coding!\n\nBring your own key for Copilot Business and Enterprise\n\nTeams often need specific models for compliance, performance, or cost reasons, but switching between tools to use them slows developers down. Bring your own language model key (BYOK) lets Copilot Business and Enterprise users connect their own API keys for providers like OpenRouter, Ollama, Google, OpenAI, and more, so they can use those models directly in VS Code chat.\n\nBy default, BYOK is enabled and administrators can disable it with the Bring Your Own Language Model Key policy in the Copilot policy settings on GitHub.com. This gives administrators control over which model providers are available to their organization while keeping developers in their existing workflow.\n\nAfter the policy is enabled, organization members can add models from built-in providers or install language model provider extensions.\n\nChat experience\nIncremental rendering of chat responses (Experimental)\n\nChat responses feel more fluid and natural with incremental rendering, which streams content block-by-block with optional animations as tokens arrive. Instead of the default timer-based rendering, this experimental approach renders each block as it becomes ready, reducing the perceived wait time for longer responses.\n\nConfigure incremental response rendering with the following settings:\n\nchat.experimental.incrementalRendering.enabled\n: Enable or disable incremental response rendering with optional block-level animation when streaming chat responses. Default: true.\nchat.experimental.incrementalRendering.animationStyle\n: Configure the animation style for incremental response rendering. Options: none, fade, rise, blur, scale, slide, reveal. Default: fade.\nchat.experimental.incrementalRendering.buffering\n: Configure how content is buffered before rendering during incremental response rendering. Lower buffering levels render faster but may show incomplete sentences or partially-formed Markdown. Options: "
+              ],
+              "hasImage": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
