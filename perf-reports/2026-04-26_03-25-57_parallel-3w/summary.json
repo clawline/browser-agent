@@ -1,0 +1,364 @@
+{
+  "env": {
+    "timestamp": "2026-04-26T03:20:57.265Z",
+    "git_head": null,
+    "hook_url": "http://127.0.0.1:4821/hook",
+    "health": {
+      "name": "clawline-hook",
+      "version": "1.0.0",
+      "pid": 93672,
+      "hostStartedAt": "2026-04-26T03:20:08.335Z",
+      "chromeConnected": true,
+      "port": 4821,
+      "pendingTasks": 0,
+      "extensionName": "Clawline Browser Agent",
+      "extensionVersion": "0.1.0",
+      "windows": [
+        {
+          "windowId": 420612270,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 2,
+          "tabs": [
+            {
+              "id": 420612272,
+              "title": "react hooks tutorial - Google 搜索",
+              "url": "https://www.google.com/search?q=react+hooks+tutorial",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612351,
+              "title": "扩展程序",
+              "url": "chrome://extensions/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420612272,
+            "title": "react hooks tutorial - Google 搜索",
+            "url": "https://www.google.com/search?q=react+hooks+tutorial"
+          }
+        },
+        {
+          "windowId": 420612354,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 1,
+          "tabs": [
+            {
+              "id": 420612355,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420612355,
+            "title": "新标签页",
+            "url": "chrome://newtab/"
+          }
+        },
+        {
+          "windowId": 420612352,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 1,
+          "tabs": [
+            {
+              "id": 420612353,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420612353,
+            "title": "新标签页",
+            "url": "chrome://newtab/"
+          }
+        }
+      ],
+      "sessionsFetchedAt": "2026-04-26T03:20:44.603Z"
+    },
+    "sessions": [
+      {
+        "windowId": 420612270,
+        "focused": false,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 2,
+        "tabs": [
+          {
+            "id": 420612272,
+            "title": "react hooks tutorial - Google 搜索",
+            "url": "https://www.google.com/search?q=react+hooks+tutorial",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612351,
+            "title": "扩展程序",
+            "url": "chrome://extensions/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420612272,
+          "title": "react hooks tutorial - Google 搜索",
+          "url": "https://www.google.com/search?q=react+hooks+tutorial"
+        }
+      },
+      {
+        "windowId": 420612354,
+        "focused": false,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 1,
+        "tabs": [
+          {
+            "id": 420612355,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420612355,
+          "title": "新标签页",
+          "url": "chrome://newtab/"
+        }
+      },
+      {
+        "windowId": 420612352,
+        "focused": false,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 1,
+        "tabs": [
+          {
+            "id": 420612353,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420612353,
+          "title": "新标签页",
+          "url": "chrome://newtab/"
+        }
+      }
+    ],
+    "n_default": 1,
+    "n_longtail": 30
+  },
+  "results": [
+    {
+      "id": "W3",
+      "name": "抽取 — Wikipedia infobox",
+      "category": "extraction",
+      "dimension": "extraction",
+      "theoretical_min_tools": 4,
+      "decisiveness": false,
+      "has_validator": true,
+      "windowId": 420612354,
+      "stats": {
+        "n": 1,
+        "success": 1,
+        "success_rate": 1,
+        "validated_n": 1,
+        "passed_n": 1,
+        "pass_rate": 1,
+        "avg_score": 1,
+        "rtt_p50": 9826,
+        "rtt_p95": 9826,
+        "rtt_min": 9826,
+        "rtt_max": 9826,
+        "rtt_avg": 9826,
+        "server_ms_p50": null,
+        "avg_total_tools": 2,
+        "avg_read_page": 0,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": true,
+          "status": "completed",
+          "rtt_ms": 9825.929166,
+          "server_ms": null,
+          "received_at": null,
+          "responded_at": null,
+          "total_tools": 2,
+          "navigate_count": 1,
+          "read_page_count": 0,
+          "find_count": 0,
+          "form_input_count": 0,
+          "get_text_count": 0,
+          "turn_answer_count": 0,
+          "screenshot_count": 0,
+          "click_count": 0,
+          "scroll_count": 0,
+          "type_count": 0,
+          "key_count": 0,
+          "wait_count": 0,
+          "tool_errors": 0,
+          "redundant_calls": 0,
+          "reconfirm_before_click": 0,
+          "result_text": "```json\n{\n  \"Born\": \"Donald Ervin Knuth (1938-01-10) January 10, 1938 (age 88)Milwaukee, Wisconsin, U.S.\",\n  \"Education\": \".mw-parser-output .plainlist ol,.mw-parser-output .plainlist ul{line-height:inherit;list-style:none;margin:0;padding:0}.mw-parser-output .plainlist ol li,.mw-parser-output .plainlist ul li{margin-bottom:0}Case Western Reserve University (BS, MS)California Institute of Technology (PhD)\",\n  \"Known for\": \"show\\n.mw-parser-output .nobold{font-weight:normal}See list\\nThe Art of C",
+          "full_result_len": 1636,
+          "validation": {
+            "passed": true,
+            "score": 1,
+            "details": "kvPairs=12, hasKnuthFacts=true"
+          },
+          "error": null,
+          "http_status": 200,
+          "windowId": 420612354
+        }
+      ]
+    },
+    {
+      "id": "W1",
+      "name": "抽取 — HN 前 10 条故事 JSON",
+      "category": "extraction",
+      "dimension": "extraction",
+      "theoretical_min_tools": 4,
+      "decisiveness": false,
+      "has_validator": true,
+      "windowId": 420612270,
+      "stats": {
+        "n": 1,
+        "success": 1,
+        "success_rate": 1,
+        "validated_n": 1,
+        "passed_n": 1,
+        "pass_rate": 1,
+        "avg_score": 1,
+        "rtt_p50": 15155,
+        "rtt_p95": 15155,
+        "rtt_min": 15155,
+        "rtt_max": 15155,
+        "rtt_avg": 15155,
+        "server_ms_p50": null,
+        "avg_total_tools": 2,
+        "avg_read_page": 1,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": true,
+          "status": "completed",
+          "rtt_ms": 15154.831333,
+          "server_ms": null,
+          "received_at": null,
+          "responded_at": null,
+          "total_tools": 2,
+          "navigate_count": 1,
+          "read_page_count": 1,
+          "find_count": 0,
+          "form_input_count": 0,
+          "get_text_count": 0,
+          "turn_answer_count": 0,
+          "screenshot_count": 0,
+          "click_count": 0,
+          "scroll_count": 0,
+          "type_count": 0,
+          "key_count": 0,
+          "wait_count": 0,
+          "tool_errors": 0,
+          "redundant_calls": 0,
+          "reconfirm_before_click": 0,
+          "result_text": "Let me extract the top 10 stories from this data and get the JSON output. Based on the page structure, I'll compile the information for the first 10 stories:\n\n```json\n[\n  {\n    \"rank\": 1,\n    \"title\": \"Amateur armed with ChatGPT solves an Erdős problem\",\n    \"url\": \"https://www.scientificamerican.com/article/amateur-armed-with-chatgpt-vibe-maths-a-60-year-old-problem/\",\n    \"score\": 83,\n    \"author\": \"pr337h4m\",\n    \"comments_count\": 38,\n    \"age\": \"1 hour ago\"\n  },\n  {\n    \"rank\": 2,\n    \"title",
+          "full_result_len": 2965,
+          "validation": {
+            "passed": true,
+            "score": 1,
+            "details": "items=10, titles=true, scores=true"
+          },
+          "error": null,
+          "http_status": 200,
+          "windowId": 420612270
+        }
+      ]
+    },
+    {
+      "id": "W4",
+      "name": "抽取 — Google 搜索结果（过滤广告）",
+      "category": "extraction",
+      "dimension": "extraction",
+      "theoretical_min_tools": 4,
+      "decisiveness": false,
+      "has_validator": true,
+      "windowId": 420612352,
+      "stats": {
+        "n": 1,
+        "success": 0,
+        "success_rate": 0,
+        "validated_n": 0,
+        "passed_n": 0,
+        "pass_rate": null,
+        "avg_score": null,
+        "rtt_p50": 0,
+        "rtt_p95": 0,
+        "rtt_min": 0,
+        "rtt_max": 0,
+        "rtt_avg": 0,
+        "server_ms_p50": null,
+        "avg_total_tools": 0,
+        "avg_read_page": 0,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": false,
+          "rtt_ms": 300011.942417,
+          "http_error": true,
+          "error": "fetch: client timeout",
+          "total_tools": 0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,433 @@
+{
+  "env": {
+    "timestamp": "2026-04-26T03:20:57.265Z",
+    "git_head": null,
+    "hook_url": "http://127.0.0.1:4821/hook",
+    "health": {
+      "name": "clawline-hook",
+      "version": "1.0.0",
+      "pid": 93672,
+      "hostStartedAt": "2026-04-26T03:20:08.335Z",
+      "chromeConnected": true,
+      "port": 4821,
+      "pendingTasks": 0,
+      "extensionName": "Clawline Browser Agent",
+      "extensionVersion": "0.1.0",
+      "windows": [
+        {
+          "windowId": 420612270,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 2,
+          "tabs": [
+            {
+              "id": 420612272,
+              "title": "react hooks tutorial - Google 搜索",
+              "url": "https://www.google.com/search?q=react+hooks+tutorial",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            },
+            {
+              "id": 420612351,
+              "title": "扩展程序",
+              "url": "chrome://extensions/",
+              "active": false,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420612272,
+            "title": "react hooks tutorial - Google 搜索",
+            "url": "https://www.google.com/search?q=react+hooks+tutorial"
+          }
+        },
+        {
+          "windowId": 420612354,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 1,
+          "tabs": [
+            {
+              "id": 420612355,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420612355,
+            "title": "新标签页",
+            "url": "chrome://newtab/"
+          }
+        },
+        {
+          "windowId": 420612352,
+          "focused": false,
+          "windowType": "normal",
+          "incognito": false,
+          "tabCount": 1,
+          "tabs": [
+            {
+              "id": 420612353,
+              "title": "新标签页",
+              "url": "chrome://newtab/",
+              "active": true,
+              "pinned": false,
+              "discarded": false
+            }
+          ],
+          "activeTab": {
+            "id": 420612353,
+            "title": "新标签页",
+            "url": "chrome://newtab/"
+          }
+        }
+      ],
+      "sessionsFetchedAt": "2026-04-26T03:20:44.603Z"
+    },
+    "sessions": [
+      {
+        "windowId": 420612270,
+        "focused": false,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 2,
+        "tabs": [
+          {
+            "id": 420612272,
+            "title": "react hooks tutorial - Google 搜索",
+            "url": "https://www.google.com/search?q=react+hooks+tutorial",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          },
+          {
+            "id": 420612351,
+            "title": "扩展程序",
+            "url": "chrome://extensions/",
+            "active": false,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420612272,
+          "title": "react hooks tutorial - Google 搜索",
+          "url": "https://www.google.com/search?q=react+hooks+tutorial"
+        }
+      },
+      {
+        "windowId": 420612354,
+        "focused": false,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 1,
+        "tabs": [
+          {
+            "id": 420612355,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420612355,
+          "title": "新标签页",
+          "url": "chrome://newtab/"
+        }
+      },
+      {
+        "windowId": 420612352,
+        "focused": false,
+        "windowType": "normal",
+        "incognito": false,
+        "tabCount": 1,
+        "tabs": [
+          {
+            "id": 420612353,
+            "title": "新标签页",
+            "url": "chrome://newtab/",
+            "active": true,
+            "pinned": false,
+            "discarded": false
+          }
+        ],
+        "activeTab": {
+          "id": 420612353,
+          "title": "新标签页",
+          "url": "chrome://newtab/"
+        }
+      }
+    ],
+    "n_default": 1,
+    "n_longtail": 30
+  },
+  "results": [
+    {
+      "id": "W3",
+      "name": "抽取 — Wikipedia infobox",
+      "category": "extraction",
+      "dimension": "extraction",
+      "theoretical_min_tools": 4,
+      "decisiveness": false,
+      "has_validator": true,
+      "windowId": 420612354,
+      "stats": {
+        "n": 1,
+        "success": 1,
+        "success_rate": 1,
+        "validated_n": 1,
+        "passed_n": 1,
+        "pass_rate": 1,
+        "avg_score": 1,
+        "rtt_p50": 9826,
+        "rtt_p95": 9826,
+        "rtt_min": 9826,
+        "rtt_max": 9826,
+        "rtt_avg": 9826,
+        "server_ms_p50": null,
+        "avg_total_tools": 2,
+        "avg_read_page": 0,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": true,
+          "status": "completed",
+          "rtt_ms": 9825.929166,
+          "server_ms": null,
+          "received_at": null,
+          "responded_at": null,
+          "total_tools": 2,
+          "navigate_count": 1,
+          "read_page_count": 0,
+          "find_count": 0,
+          "form_input_count": 0,
+          "get_text_count": 0,
+          "turn_answer_count": 0,
+          "screenshot_count": 0,
+          "click_count": 0,
+          "scroll_count": 0,
+          "type_count": 0,
+          "key_count": 0,
+          "wait_count": 0,
+          "tool_errors": 0,
+          "redundant_calls": 0,
+          "reconfirm_before_click": 0,
+          "result_text": "```json\n{\n  \"Born\": \"Donald Ervin Knuth (1938-01-10) January 10, 1938 (age 88)Milwaukee, Wisconsin, U.S.\",\n  \"Education\": \".mw-parser-output .plainlist ol,.mw-parser-output .plainlist ul{line-height:inherit;list-style:none;margin:0;padding:0}.mw-parser-output .plainlist ol li,.mw-parser-output .plainlist ul li{margin-bottom:0}Case Western Reserve University (BS, MS)California Institute of Technology (PhD)\",\n  \"Known for\": \"show\\n.mw-parser-output .nobold{font-weight:normal}See list\\nThe Art of C",
+          "full_result_len": 1636,
+          "validation": {
+            "passed": true,
+            "score": 1,
+            "details": "kvPairs=12, hasKnuthFacts=true"
+          },
+          "error": null,
+          "http_status": 200,
+          "raw_tools": [
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "https://en.wikipedia.org/wiki/Donald_Knuth"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_012rqqEUtofJzxhhieQT3ziL",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://en.wikipedia.org/wiki/Donald_Knuth (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "javascript_tool",
+              "input": {
+                "action": "javascript_exec",
+                "text": "\n// Find the infobox on the page\nconst infobox = document.querySelector('.infobox');\nif (!infobox) {\n  'No infobox found';\n} else {\n  const result = {};\n  \n  // Get all rows in the infobox\n  const rows = infobox.querySelectorAll('tr');\n  \n  rows.forEach(row => {\n    const th = row.querySelector('th');\n    const td = row.querySelector('td');\n    \n    if (th && td) {\n      const key = th.textContent.trim();\n      const value = td.textContent.trim();\n      \n      if (key && value) {\n        result[key] = value;\n      }\n    }\n  });\n  \n  JSON.stringify(result, null, 2);\n}\n"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_01Hn8t5KYp1FALECnwJtWBrt",
+              "is_error": false,
+              "texts": [
+                "{\n  \"Born\": \"Donald Ervin Knuth (1938-01-10) January 10, 1938 (age 88)Milwaukee, Wisconsin, U.S.\",\n  \"Education\": \".mw-parser-output .plainlist ol,.mw-parser-output .plainlist ul{line-height:inherit;list-style:none;margin:0;padding:0}.mw-parser-output .plainlist ol li,.mw-parser-output .plainlist ul li{margin-bottom:0}Case Western Reserve University (BS, MS)California Institute of Technology (PhD)\",\n  \"Known for\": \"show\\n.mw-parser-output .nobold{font-weight:normal}See list\\nThe Art of Computer Programming,TeX, METAFONT,Computer Modern,Knuth's up-arrow notation,Knuth–Morris–Pratt algorithm,Knuth–Bendix completion algorithm,MMIX,Robinson–Schensted–Knuth correspondence, LR parser,Literate programming\",\n  \"Spouse\": \"Nancy Jill Carter\",\n  \"Children\": \"2\",\n  \"Awards\": \"show\\nSee list\\n\\nSIGCSE Outstanding Contribution (1986)\\nGrace Murray Hopper Award (1971)\\nTuring Award (1974)\\nMember of the National Academy of Sciences (1975)\\nNational Medal of Science (1979)\\nJohn von Neumann Medal (1995)\\nHarvey Prize (1995)\\nKyoto Prize (1996)\\nForeign Member of the Royal Society (2003)[1]\\nFaraday Medal (2011)\\nBBVA Foundation Frontiers of Knowledge Award (2010)\\nTuring Lecture (2011)\\nFlajolet Lecture (2014)\",\n  \"Fields\": \"MathematicsComputer science\",\n  \"Institutions\": \"California Institute of Technology, Stanford University\",\n  \"Thesis\": \"Finite Semifields and Projective Planes (1963)\",\n  \"Doctoral advisor\": \"Marshall Hall, Jr.[2]\",\n  \"Doctoral students\": \"Leonidas J. Guibas\\nMichael Fredman\\nScott Kim\\nVaughan Pratt\\nRobert Sedgewick\\nJeffrey Vitter\\nAndrei Broder[2]\",\n  \"Website\": \"cs.stanford.edu/~knuth\"\n}"
+              ],
+              "hasImage": false
+            }
+          ],
+          "windowId": 420612354
+        }
+      ]
+    },
+    {
+      "id": "W1",
+      "name": "抽取 — HN 前 10 条故事 JSON",
+      "category": "extraction",
+      "dimension": "extraction",
+      "theoretical_min_tools": 4,
+      "decisiveness": false,
+      "has_validator": true,
+      "windowId": 420612270,
+      "stats": {
+        "n": 1,
+        "success": 1,
+        "success_rate": 1,
+        "validated_n": 1,
+        "passed_n": 1,
+        "pass_rate": 1,
+        "avg_score": 1,
+        "rtt_p50": 15155,
+        "rtt_p95": 15155,
+        "rtt_min": 15155,
+        "rtt_max": 15155,
+        "rtt_avg": 15155,
+        "server_ms_p50": null,
+        "avg_total_tools": 2,
+        "avg_read_page": 1,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": true,
+          "status": "completed",
+          "rtt_ms": 15154.831333,
+          "server_ms": null,
+          "received_at": null,
+          "responded_at": null,
+          "total_tools": 2,
+          "navigate_count": 1,
+          "read_page_count": 1,
+          "find_count": 0,
+          "form_input_count": 0,
+          "get_text_count": 0,
+          "turn_answer_count": 0,
+          "screenshot_count": 0,
+          "click_count": 0,
+          "scroll_count": 0,
+          "type_count": 0,
+          "key_count": 0,
+          "wait_count": 0,
+          "tool_errors": 0,
+          "redundant_calls": 0,
+          "reconfirm_before_click": 0,
+          "result_text": "Let me extract the top 10 stories from this data and get the JSON output. Based on the page structure, I'll compile the information for the first 10 stories:\n\n```json\n[\n  {\n    \"rank\": 1,\n    \"title\": \"Amateur armed with ChatGPT solves an Erdős problem\",\n    \"url\": \"https://www.scientificamerican.com/article/amateur-armed-with-chatgpt-vibe-maths-a-60-year-old-problem/\",\n    \"score\": 83,\n    \"author\": \"pr337h4m\",\n    \"comments_count\": 38,\n    \"age\": \"1 hour ago\"\n  },\n  {\n    \"rank\": 2,\n    \"title",
+          "full_result_len": 2965,
+          "validation": {
+            "passed": true,
+            "score": 1,
+            "details": "items=10, titles=true, scores=true"
+          },
+          "error": null,
+          "http_status": 200,
+          "raw_tools": [
+            {
+              "type": "call",
+              "name": "navigate",
+              "input": {
+                "url": "https://news.ycombinator.com"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_01EXLKZHeAmB4i9MRWBerCck",
+              "is_error": false,
+              "texts": [
+                "Navigated to: https://news.ycombinator.com/ (load=load)"
+              ],
+              "hasImage": false
+            },
+            {
+              "type": "call",
+              "name": "read_page",
+              "input": {
+                "filter": "all"
+              }
+            },
+            {
+              "type": "result",
+              "tool_use_id": "toolu_01Rwv4fQgkLCPrBfRrGTb6BZ",
+              "is_error": false,
+              "texts": [
+                "[Viewport: 1444x1289]\ntable [ref_1]\n table [ref_2]\n  link [ref_3] href=\"https://news.ycombinator.com\"\n  generic \"| | | | | |\" [ref_4]\n   link \"Hacker News\" [ref_5] href=\"news\"\n   link \"new\" [ref_6] href=\"newest\"\n   link \"past\" [ref_7] href=\"front\"\n   link \"comments\" [ref_8] href=\"newcomments\"\n   link \"ask\" [ref_9] href=\"ask\"\n   link \"show\" [ref_10] href=\"show\"\n   link \"jobs\" [ref_11] href=\"jobs\"\n   link \"submit\" [ref_12] href=\"submit\"\n  link \"login\" [ref_13] href=\"login?goto=news\"\n table [ref_14]\n  link [ref_15] href=\"vote?id=47903126&how=up&goto=news\"\n   generic \"upvote\" [ref_16]\n  link \"Amateur armed with ChatGPT solves an Erdős problem\" [ref_17] href=\"https://www.scientificamerican.com/article/amateur-armed-with-chatgpt-vibe-maths-a-60-year-old-problem/\"\n  link [ref_18] href=\"from?site=scientificamerican.com\"\n   generic \"scientificamerican.com\" [ref_19]\n  generic \"by | |\" [ref_20]\n   generic \"83 points\" [ref_21]\n   link \"pr337h4m\" [ref_22] href=\"user?id=pr337h4m\"\n   generic \"2026-04-25T17:40:38 1777138838\" [ref_23]\n    link \"1 hour ago\" [ref_24] href=\"item?id=47903126\"\n   link \"hide\" [ref_25] href=\"hide?id=47903126&goto=news\"\n   link \"38 comments\" [ref_26] href=\"item?id=47903126\"\n  link [ref_27] href=\"vote?id=47905984&how=up&goto=news\"\n   generic \"upvote\" [ref_28]\n  link \"Why has there been so little progress on Alzheimer's disease?\" [ref_29] href=\"https://freakonomics.com/podcast/why-has-there-been-so-little-progress-on-alzheimers-disease/\"\n  link [ref_30] href=\"from?site=freakonomics.com\"\n   generic \"freakonomics.com\" [ref_31]\n  generic \"by | |\" [ref_32]\n   generic \"109 points\" [ref_33]\n   link \"chiefalchemist\" [ref_34] href=\"user?id=chiefalchemist\"\n   generic \"2026-04-26T00:12:47 1777162367\" [ref_35]\n    link \"3 hours ago\" [ref_36] href=\"item?id=47905984\"\n   link \"hide\" [ref_37] href=\"hide?id=47905984&goto=news\"\n   link \"48 comments\" [ref_38] href=\"item?id=47905984\"\n  link [ref_39] href=\"vote?id=47904876&how=up&goto=news\"\n   generic \"upvote\" [ref_40]\n  link \"USB Cheat Sheet (2022)\" [ref_41] href=\"https://fabiensanglard.net/usbcheat/index.html\"\n  link [ref_42] href=\"from?site=fabiensanglard.net\"\n   generic \"fabiensanglard.net\" [ref_43]\n  generic \"by | |\" [ref_44]\n   generic \"188 points\" [ref_45]\n   link \"gwerbret\" [ref_46] href=\"user?id=gwerbret\"\n   generic \"2026-04-25T21:51:18 1777153878\" [ref_47]\n    link \"5 hours ago\" [ref_48] href=\"item?id=47904876\"\n   link \"hide\" [ref_49] href=\"hide?id=47904876&goto=news\"\n   link \"47 comments\" [ref_50] href=\"item?id=47904876\"\n  link [ref_51] href=\"vote?id=47867473&how=up&goto=news\"\n   generic \"upvote\" [ref_52]\n  link \"Flickr: The first and last great photo platform\" [ref_53] href=\"https://petapixel.com/2026/04/22/flickr-the-first-and-last-great-photo-platform/\"\n  link [ref_54] href=\"from?site=petapixel.com\"\n   generic \"petapixel.com\" [ref_55]\n  generic \"by | |\" [ref_56]\n   generic \"61 points\" [ref_57]\n   link \"Nrbelex\" [ref_58] href=\"user?id=Nrbelex\"\n   generic \"2026-04-22T18:34:21 1776882861\" [ref_59]\n    link \"5 hours ago\" [ref_60] href=\"item?id=47867473\"\n   link \"hide\" [ref_61] href=\"hide?id=47867473&goto=news\"\n   link \"29 comments\" [ref_62] href=\"item?id=47867473\"\n  link [ref_63] href=\"vote?id=47860198&how=up&goto=news\"\n   generic \"upvote\" [ref_64]\n  link \"The Free Universal Construction Kit\" [ref_65] href=\"https://fffff.at/free-universal-construction-kit/\"\n  link [ref_66] href=\"from?site=fffff.at\"\n   generic \"fffff.at\" [ref_67]\n  generic \"by | |\" [ref_68]\n   generic \"284 points\" [ref_69]\n   link \"robinhouston\" [ref_70] href=\"user?id=robinhouston\"\n   generic \"2026-04-22T07:20:23 1776842423\" [ref_71]\n    link \"12 hours ago\" [ref_72] href=\"item?id=47860198\"\n   link \"hide\" [ref_73] href=\"hide?id=47860198&goto=news\"\n   link \"55 comments\" [ref_74] href=\"item?id=47860198\"\n  link [ref_75] href=\"vote?id=47870901&how=up&goto=news\"\n   generic \"upvote\" [ref_76]\n  link \"OpenAI Privacy Filter\" [ref_77] href=\"https://openai.com/index/introducing-openai-privacy-filter/\"\n  link [ref_78] href=\"from?site=openai.com\"\n   generic \"openai.com\" [ref_79]\n  generic \"by | |\" [ref_80]\n   generic \"127 points\" [ref_81]\n   link \"tanelpoder\" [ref_82] href=\"user?id=tanelpoder\"\n   generic \"2026-04-23T00:14:55 1776903295\" [ref_83]\n    link \"6 hours ago\" [ref_84] href=\"item?id=47870901\"\n   link \"hide\" [ref_85] href=\"hide?id=47870901&goto=news\"\n   link \"20 comments\" [ref_86] href=\"item?id=47870901\"\n  link [ref_87] href=\"vote?id=47863570&how=up&goto=news\"\n   generic \"upvote\" [ref_88]\n  link \"1-Bit Hokusai's \\\"The Great Wave\\\" (2023)\" [ref_89] href=\"https://www.hypertalking.com/2023/05/08/1-bit-pixel-art-of-hokusais-the-great-wave-off-kanagawa/\"\n  link [ref_90] href=\"from?site=hypertalking.com\"\n   generic \"hypertalking.com\" [ref_91]\n  generic \"by | |\" [ref_92]\n   generic \"531 points\" [ref_93]\n   link \"stephen-hill\" [ref_94] href=\"user?id=stephen-hill\"\n   generic \"2026-04-22T13:46:23 1776865583\" [ref_95]\n    link \"15 hours ago\" [ref_96] href=\"item?id=47863570\"\n   link \"hide\" [ref_97] href=\"hide?id=47863570&goto=news\"\n   link \"88 comments\" [ref_98] href=\"item?id=47863570\"\n  link [ref_99] href=\"vote?id=47903945&how=up&goto=news\"\n   generic \"upvote\" [ref_100]\n  link \"America's Geothermal Breakthrough\" [ref_101] href=\"https://oilprice.com/Alternative-Energy/Geothermal-Energy/Americas-Geothermal-Breakthrough-Could-Unlock-a-150-Gigawatt-Energy-Revolution.html\"\n  link [ref_102] href=\"from?site=oilprice.com\"\n   generic \"oilprice.com\" [ref_103]\n  generic \"by | |\" [ref_104]\n   generic \"81 points\" [ref_105]\n   link \"sleepyguy\" [ref_106] href=\"user?id=sleepyguy\"\n   generic \"2026-04-25T19:38:55 1777145935\" [ref_107]\n    link \"7 hours ago\" [ref_108] href=\"item?id=47903945\"\n   link \"hide\" [ref_109] href=\"hide?id=47903945&goto=news\"\n   link \"92 comments\" [ref_110] href=\"item?id=47903945\"\n  link [ref_111] href=\"vote?id=47902525&how=up&goto=news\"\n   generic \"upvote\" [ref_112]\n  link \"Using coding assistance tools to revive projects you never were going to finish\" [ref_113] href=\"https://blog.matthewbrunelle.com/its-ok-to-use-coding-assistance-tools-to-revive-the-projects-you-never-were-going-to-finish/\"\n  link [ref_114] href=\"from?site=matthewbrunelle.com\"\n   generic \"matthewbrunelle.com\" [ref_115]\n  generic \"by | |\" [ref_116]\n   generic \"202 points\" [ref_117]\n   link \"speckx\" [ref_118] href=\"user?id=speckx\"\n   generic \"2026-04-25T16:11:50 1777133510\" [ref_119]\n    link \"11 hours ago\" [ref_120] href=\"item?id=47902525\"\n   link \"hide\" [ref_121] href=\"hide?id=47902525&goto=news\"\n   link \"119 comments\" [ref_122] href=\"item?id=47902525\"\n  generic \"10.\" [ref_123]\n  link [ref_124] href=\"vote?id=47866127&how=up&goto=news\"\n   generic \"upvote\" [ref_125]\n  link \"The Joy of Folding Bikes\" [ref_126] href=\"https://blog.korny.info/2026/04/19/the-joy-of-folding-bikes\"\n  link [ref_127] href=\"from?site=korny.info\"\n   generic \"korny.info\" [ref_128]\n  generic \"by | |\" [ref_129]\n   generic \"97 points\" [ref_130]\n   link \"pavel_lishin\" [ref_131] href=\"user?id=pavel_lishin\"\n   generic \"2026-04-22T16:50:27 1776876627\" [ref_132]\n    link \"7 hours ago\" [ref_133] href=\"item?id=47866127\"\n   link \"hide\" [ref_134] href=\"hide?id=47866127&goto=news\"\n   link \"59 comments\" [ref_135] href=\"item?id=47866127\"\n  generic \"11.\" [ref_136]\n  link [ref_137] href=\"vote?id=47876930&how=up&goto=news\"\n   generic \"upvote\" [ref_138]\n  link \"Math Is Hard – OpenBSD Stories\" [ref_139] href=\"http://miod.online.fr/software/openbsd/stories/vaxfp.html\"\n  link [ref_140] href=\"from?site=online.fr\"\n   generic \"online.fr\" [ref_141]\n  generic \"by | |\" [ref_142]\n   generic \"52 points\" [ref_143]\n   link \"signa11\" [ref_144] href=\"user?id=signa11\"\n   generic \"2026-04-23T15:29:50 1776958190\" [ref_145]\n    link \"6 hours ago\" [ref_146] href=\"item?id=47876930\"\n   link \"hide\" [ref_147] href=\"hide?id=47876930&goto=news\"\n   link \"1 comment\" [ref_148] href=\"item?id=47876930\"\n  generic \"12.\" [ref_149]\n  link [ref_150] href=\"vote?id=47875597&how=up&goto=news\"\n   generic \"upvote\" [ref_151]\n  link \"Optimizing Datalog for the GPU\" [ref_152] href=\"https://dl.acm.org/doi/10.1145/3669940.3707274\"\n  link [ref_153] href=\"from?site=acm.org\"\n   generic \"acm.org\" [ref_154]\n  generic \"by | |\" [ref_155]\n   generic \"26 points\" [ref_156]\n   link \"tosh\" [ref_157] href=\"user?id=tosh\"\n   generic \"2026-04-23T13:34:47 1776951287\" [ref_158]\n    link \"3 hours ago\" [ref_159] href=\"item?id=47875597\"\n   link \"hide\" [ref_160] href=\"hide?id=47875597&goto=news\"\n   link \"3 comments\" [ref_161] href=\"item?id=47875597\"\n  generic \"13.\" [ref_162]\n  link [ref_163] href=\"vote?id=47899053&how=up&goto=news\"\n   generic \"upvote\" [ref_164]\n  link \"New 10 GbE USB adapters are cooler, smaller, cheaper\" [ref_165] href=\"https://www.jeffgeerling.com/blog/2026/new-10-gbe-usb-adapters-cooler-smaller-cheaper/\"\n  link [ref_166] href=\"from?site=jeffgeerling.com\"\n   generic \"jeffgeerling.com\" [ref_167]\n  generic \"by | |\" [ref_168]\n   generic \"552 points\" [ref_169]\n   link \"calcifer\" [ref_170] href=\"user?id=calcifer\"\n   generic \"2026-04-25T05:56:12 1777096572\" [ref_171]\n    link \"21 hours ago\" [ref_172] href=\"item?id=47899053\"\n   link \"hide\" [ref_173] href=\"hide?id=47899053&goto=news\"\n   link \"324 comments\" [ref_174] href=\"item?id=47899053\"\n  generic \"14.\" [ref_175]\n  link [ref_176] href=\"vote?id=47880565&how=up&goto=news\"\n   generic \"upvote\" [ref_177]\n  link \"The Long Reply\" [ref_178] href=\"https://ironicsans.ghost.io/the-long-reply/\"\n  link [ref_179] href=\"from?site=ironicsans.ghost.io\"\n   generic \"ironicsans.ghost.io\" [ref_180]\n  generic \"by | |\" [ref_181]\n   generic \"17 points\" [ref_182]\n   link \"NaOH\" [ref_183] href=\"user?id=NaOH\"\n   generic \"2026-04-23T19:33:59 1776972839\" [ref_184]\n    link \"2 hours ago\" [ref_185] href=\"item?id=47880565\"\n   link \"hide\" [ref_186] href=\"hide?id=47880565&goto=news\"\n   link \"discuss\" [ref_187] href=\"item?id=47880565\"\n  generic \"15.\" [ref_188]\n  link [ref_189] href=\"vote?id=47902987&how=up&goto=news\"\n   generic \"upvote\" [ref_190]\n  link \"Simulacrum of Knowledge Work\" [ref_191] href=\"https://blog.happyfellow.dev/simulacrum-of-knowledge-work/\"\n  link [ref_192] href=\"from?site=happyfellow.dev\"\n   generic \"happyfellow.dev\" [ref_193]\n  generic \"by | |\" [ref_194]\n   generic \"107 points\" [ref_195]\n   link \"thehappyfellow\" [ref_196] href=\"user?id=thehappyfellow\"\n   generic \"2026-04-25T17:20:34 1777137634\" [ref_197]\n    link \"9 hours ago\" [ref_198] href=\"item?id=47902987\"\n   link \"hide\" [ref_199] href=\"hide?id=47902987&goto=news\"\n   link \"40 comments\" [ref_200] href=\"item?id=47902987\"\n  generic \"16.\" [ref_201]\n  link [ref_202] href=\"vote?id=47903173&how=up&goto=news\"\n   generic \"upvote\" [ref_203]\n  link \"Mine, an IDE for Coalton and Common Lisp\" [ref_204] href=\"https://coalton-lang.github.io/mine/\"\n  link [ref_205] href=\"from?site=coalton-lang.github.io\"\n   generic \"coalton-lang.github.io\" [ref_206]\n  generic \"by | |\" [ref_207]\n   generic \"77 points\" [ref_208]\n   link \"varjag\" [ref_209] href=\"user?id=varjag\"\n   generic \"2026-04-25T17:47:02 1777139222\" [ref_210]\n    link \"9 hours ago\" [ref_211] href=\"item?id=47903173\"\n   link \"hide\" [ref_212] href=\"hide?id=47903173&goto=news\"\n   link \"28 comments\" [ref_213] href=\"item?id=47903173\"\n  generic \"17.\" [ref_214]\n  link [ref_215] href=\"vote?id=47859442&how=up&goto=news\"\n   generic \"upvote\" [ref_216]\n  link \"What async promised and what it delivered\" [ref_217] href=\"https://causality.blog/essays/what-async-promised/\"\n  link [ref_218] href=\"from?site=causality.blog\"\n   generic \"causality.blog\" [ref_219]\n  generic \"by | |\" [ref_220]\n   generic \"173 points\" [ref_221]\n   link \"zdw\" [ref_222] href=\"user?id=zdw\"\n   generic \"2026-04-22T05:28:58 1776835738\" [ref_223]\n    link \"14 hours ago\" [ref_224] href=\"item?id=47859442\"\n   link \"hide\" [ref_225] href=\"hide?id=47859442&goto=news\"\n   link \"195 comments\" [ref_226] href=\"item?id=47859442\"\n  generic \"18.\" [ref_227]\n  link [ref_228] href=\"vote?id=47841141&how=up&goto=news\"\n   generic \"upvote\" [ref_229]\n  link \"Desmond Morris has died\" [ref_230] href=\"https://www.bbc.com/news/articles/c51y797v200o\"\n  link [ref_231] href=\"from?site=bbc.com\"\n   generic \"bbc.com\" [ref_232]\n  generic \"by | |\" [ref_233]\n   generic \"112 points\" [ref_234]\n   link \"martey\" [ref_235] href=\"user?id=martey\"\n   generic \"2026-04-20T21:32:47 1776720767\" [ref_236]\n    link \"12 hours ago\" [ref_237] href=\"item?id=47841141\"\n   link \"hide\" [ref_238] href=\"hide?id=47841141&goto=news\"\n   link \"20 comments\" [ref_239] href=\"item?id=47841141\"\n  generic \"19.\" [ref_240]\n  link [ref_241] href=\"vote?id=47884625&how=up&goto=news\"\n   generic \"upvote\" [ref_242]\n  link \"How Hard Is It to Open a File?\" [ref_243] href=\"https://blog.sebastianwick.net/posts/how-hard-is-it-to-open-a-file/\"\n  link [ref_244] href=\"from?site=sebastianwick.net\"\n   generic \"sebastianwick.net\" [ref_245]\n  generic \"by | |\" [ref_246]\n   generic \"68 points\" [ref_247]\n   link \"ffin\" [ref_248] href=\"user?id=ffin\"\n   generic \"2026-04-24T02:01:40 1776996100\" [ref_249]\n    link \"8 hours ago\" [ref_250] href=\"item?id=47884625\"\n   link \"hide\" [ref_251] href=\"hide?id=47884625&goto=news\"\n   link \"10 comments\" [ref_252] href=\"item?id=47884625\"\n  generic \"20.\" [ref_253]\n  link [ref_254] href=\"vote?id=47884662&how=up&goto=news\"\n   generic \"upvote\" [ref_255]\n  link \"The George Business, by Roger Zelazny (1980)\" [ref_256] href=\"https://www.eternal-flame.org/library/oldlibrary/georgebusiness.html\"\n  link [ref_257] href=\"from?site=eternal-flame.org\"\n   generic \"eternal-flame.org\" [ref_258]\n  generic \"by | |\" [ref_259]\n   generic \"3 points\" [ref_260]\n   link \"xeonmc\" [ref_261] href=\"user?id=xeonmc\"\n   generic \"2026-04-24T02:07:59 1776996479\" [ref_262]\n    link \"1 hour ago\" [ref_263] href=\"item?id=47884662\"\n   link \"hide\" [ref_264] href=\"hide?id=47884662&goto=news\"\n   link \"discuss\" [ref_265] href=\"item?id=47884662\"\n  generic \"21.\" [ref_266]\n  link [ref_267] href=\"vote?id=47900398&how=up&goto=news\"\n   generic \"upvote\" [ref_268]\n  link \"Martin Galway's music source files from 1980's Commodore 64 games\" [ref_269] href=\"https://github.com/MartinGalway/C64_music\"\n  link [ref_270] href=\"from?site=github.com/martingalway\"\n   generic \"github.com/martingalway\" [ref_271]\n  generic \"by | |\" [ref_272]\n   generic \"164 points\" [ref_273]\n   link \"ingve\" [ref_274] href=\"user?id=ingve\"\n   generic \"2026-04-25T10:46:14 1777113974\" [ref_275]\n    link \"16 hours ago\" [ref_276] href=\"item?id=47900398\"\n   link \"hide\" [ref_277] href=\"hide?id=47900398&goto=news\"\n   link \"24 comments\" [ref_278] href=\"item?id=47900398\"\n  generic \"22.\" [ref_279]\n  link [ref_280] href=\"vote?id=47905681&how=up&goto=news\"\n   generic \"upvote\" [ref_281]\n  link \"Her Life Savings Mysteriously Disappeared After a Systems Glitch\" [ref_282] href=\"https://www.nytimes.com/2026/04/25/your-money/fidelity-investments-fraud-alert.html\"\n  link [ref_283] href=\"from?site=nytimes.com\"\n   generic \"nytimes.com\" [ref_284]\n  generic \"by | |\" [ref_285]\n   generic \"46 points\" [ref_286]\n   link \"danso\" [ref_287] href=\"user?id=danso\"\n   generic \"2026-04-25T23:32:18 1777159938\" [ref_288]\n    link \"3 hours ago\" [ref_289] href=\"item?id=47905681\"\n   link \"hide\" [ref_290] href=\"hide?id=47905681&goto=news\"\n   link \"39 comments\" [ref_291] href=\"item?id=47905681\"\n  generic \"23.\" [ref_292]\n  link [ref_293] href=\"vote?id=47870245&how=up&goto=news\"\n   generic \"upvote\" [ref_294]\n  link \"Lute: A Standalone Runtime for Luau\" [ref_295] href=\"https://lute.luau.org/\"\n  link [ref_296] href=\"from?site=luau.org\"\n   generic \"luau.org\" [ref_297]\n  generic \"by | |\" [ref_298]\n   generic \"67 points\" [ref_299]\n   link \"vrn-sn\" [ref_300] href=\"user?id=vrn-sn\"\n   generic \"2026-04-22T22:41:57 1776897717\" [ref_301]\n    link \"9 hours ago\" [ref_302] href=\"item?id=47870245\"\n   link \"hide\" [ref_303] href=\"hide?id=47870245&goto=news\"\n   link \"11 comments\" [ref_304] href=\"item?id=47870245\"\n  generic \"24.\" [ref_305]\n  link [ref_306] href=\"vote?id=47900478&how=up&goto=news\"\n   generic \"upvote\" [ref_307]\n  link \"Discret 11, the French TV encryption of the 80s\" [ref_308] href=\"https://fabiensanglard.net/discret11/\"\n  link [ref_309] href=\"from?site=fabiensanglard.net\"\n   generic \"fabiensanglard.net\" [ref_310]\n  generic \"by | |\" [ref_311]\n   generic \"151 points\" [ref_312]\n   link \"adunk\" [ref_313] href=\"user?id=adunk\"\n   generic \"2026-04-25T11:10:41 1777115441\" [ref_314]\n    link \"16 hours ago\" [ref_315] href=\"item?id=47900478\"\n   link \"hide\" [ref_316] href=\"hide?id=47900478&goto=news\"\n   link \"27 comments\" [ref_317] href=\"item?id=47900478\"\n  generic \"25.\" [ref_318]\n  link [ref_319] href=\"vote?id=47901734&how=up&goto=news\"\n   generic \"upvote\" [ref_320]\n  link \"GPT‑5.5 Bio Bug Bounty\" [ref_321] href=\"https://openai.com/index/gpt-5-5-bio-bug-bounty/\"\n  link [ref_322] href=\"from?site=openai.com\"\n   generic \"openai.com\" [ref_323]\n  generic \"by | |\" [ref_324]\n   generic \"136 points\" [ref_325]\n   link \"Murfalo\" [ref_326] href=\"user?id=Murfalo\"\n   generic \"2026-04-25T14:17:31 1777126651\" [ref_327]\n    link \"13 hours ago\" [ref_328] href=\"item?id=47901734\"\n   link \"hide\" [ref_329] href=\"hide?id=47901734&goto=news\"\n   link \"98 comments\" [ref_330] href=\"item?id=47901734\"\n  generic \"26.\" [ref_331]\n  link [ref_332] href=\"vote?id=47905304&how=up&goto=news\"\n   generic \"upvote\" [ref_333]\n  link \"Colorado Adds Open-Source Exemption to Age-Verification Bill\" [ref_334] href=\"https://fosstodon.org/@carlrichell/116460505717380644\"\n  link [ref_335] href=\"from?site=fosstodon.org\"\n   generic \"fosstodon.org\" [ref_336]\n  generic \"by | |\" [ref_337]\n   generic \"67 points\" [ref_338]\n   link \"terminalbraid\" [ref_339] href=\"user?id=terminalbraid\"\n   generic \"2026-04-25T22:41:05 1777156865\" [ref_340]\n    link \"4 hours ago\" [ref_341] href=\"item?id=47905304\"\n   link \"hide\" [ref_342] href=\"hide?id=47905304&goto=news\"\n   link \"24 comments\" [ref_343] href=\"item?id=47905304\"\n  generic \"27.\" [ref_344]\n  link [ref_345] href=\"vote?id=47903690&how=up&goto=news\"\n   generic \"upvote\" [ref_346]\n  link \"Show HN: Kloak, A secret manager that keeps K8s workload away from secrets\" [ref_347] href=\"https://getkloak.io/\"\n  link [ref_348] href=\"from?site=getkloak.io\"\n   generic \"getkloak.io\" [ref_349]\n  generic \"by | |\" [ref_350]\n   generic \"45 points\" [ref_351]\n   link \"neo2006\" [ref_352] href=\"user?id=neo2006\"\n   generic \"2026-04-25T19:03:01 1777143781\" [ref_353]\n    link \"8 hours ago\" [ref_354] href=\"item?id=47903690\"\n   link \"hide\" [ref_355] href=\"hide?id=47903690&goto=news\"\n   link \"37 comments\" [ref_356] href=\"item?id=47903690\"\n  generic \"28.\" [ref_357]\n  link [ref_358] href=\"vote?id=47906937&how=up&goto=news\"\n   generic \"upvote\" [ref_359]\n  link \"The death of the American Dream is now official\" [ref_360] href=\"https://thehill.com/opinion/finance/5846892-american-dream-debt-crisis/\"\n  link [ref_361] href=\"from?site=thehill.com\"\n   generic \"thehill.com\" [ref_362]\n  generic \"by | |\" [ref_363]\n   generic \"3 points\" [ref_364]\n   link \"Teever\" [ref_365] href=\"user?id=Teever\"\n   generic \"2026-04-26T03:11:26 1777173086\" [ref_366]\n    link \"8 minutes ago\" [ref_367] href=\"item?id=47906937\"\n   link \"hide\" [ref_368] href=\"hide?id=47906937&goto=news\"\n   link \"discuss\" [ref_369] href=\"item?id=47906937\"\n  generic \"29.\" [ref_370]\n  link [ref_371] href=\"vote?id=47892655&how=up&goto=news\"\n   generic \"upvote\" [ref_372]\n  link \"Which one is more important: more parameters or more computation? (2021)\" [ref_373] href=\"https://parl.ai/projects/params_vs_compute/\"\n  link [ref_374] href=\"from?site=parl.ai\"\n   generic \"parl.ai\" [ref_375]\n  generic \"by | |\" [ref_376]\n   generic \"52 points\" [ref_377]\n   link \"jxmorris12\" [ref_378] href=\"user?id=jxmorris12\"\n   generic \"2026-04-24T16:44:57 1777049097\" [ref_379]\n    link \"12 hours ago\" [ref_380] href=\"item?id=47892655\"\n   link \"hide\" [ref_381] href=\"hide?id=47892655&goto=news\"\n   link \"11 comments\" [ref_382] href=\"item?id=47892655\"\n  generic \"30.\" [ref_383]\n  link [ref_384] href=\"vote?id=47904224&how=up&goto=news\"\n   generic \"upvote\" [ref_385]\n  link \"Can you stop beans from making you gassy?\" [ref_386] href=\"https://www.seriouseats.com/how-to-reduce-bean-gas-tested-11883862\"\n  link [ref_387] href=\"from?site=seriouseats.com\"\n   generic \"seriouseats.com\" [ref_388]\n  generic \"by | |\" [ref_389]\n   generic \"118 points\" [ref_390]\n   link \"jstrieb\" [ref_391] href=\"user?id=jstrieb\"\n   generic \"2026-04-25T20:17:41 1777148261\" [ref_392]\n    link \"7 hours ago\" [ref_393] href=\"item?id=47904224\"\n   link \"hide\" [ref_394] href=\"hide?id=47904224&goto=news\"\n   link \"89 comments\" [ref_395] href=\"item?id=47904224\"\n  link \"More\" [ref_396] href=\"?p=2\"\n table [ref_397]\n link \"Consider applying for YC's Summer 2026 batch! Applications are open till May 4\" [ref_398] href=\"https://www.ycombinator.com/apply/\"\n generic \"| | | | | | |\" [ref_399]\n  link \"Guidelines\" [ref_400] href=\"newsguidelines.html\"\n  link \"FAQ\" [ref_401] href=\"newsfaq.html\"\n  link \"Lists\" [ref_402] href=\"lists\"\n  link \"API\" [ref_403] href=\"https://github.com/HackerNews/API\"\n  link \"Security\" [ref_404] href=\"security.html\"\n  link \"Legal\" [ref_405] href=\"https://www.ycombinator.com/legal/\"\n  link \"Apply to YC\" [ref_406] href=\"https://www.ycombinator.com/apply/\"\n  link \"Contact\" [ref_407] href=\"mailto:hn@ycombinator.com\"\n form \"Search:\" [ref_408]\n  textbox [ref_409] type=\"text\""
+              ],
+              "hasImage": false
+            }
+          ],
+          "windowId": 420612270
+        }
+      ]
+    },
+    {
+      "id": "W4",
+      "name": "抽取 — Google 搜索结果（过滤广告）",
+      "category": "extraction",
+      "dimension": "extraction",
+      "theoretical_min_tools": 4,
+      "decisiveness": false,
+      "has_validator": true,
+      "windowId": 420612352,
+      "stats": {
+        "n": 1,
+        "success": 0,
+        "success_rate": 0,
+        "validated_n": 0,
+        "passed_n": 0,
+        "pass_rate": null,
+        "avg_score": null,
+        "rtt_p50": 0,
+        "rtt_p95": 0,
+        "rtt_min": 0,
+        "rtt_max": 0,
+        "rtt_avg": 0,
+        "server_ms_p50": null,
+        "avg_total_tools": 0,
+        "avg_read_page": 0,
+        "avg_screenshot": 0,
+        "avg_find": 0,
+        "avg_form_input": 0,
+        "avg_click": 0,
+        "avg_redundant": 0,
+        "avg_reconfirm": 0,
+        "pct_runs_with_repeated_read_page": 0,
+        "pct_runs_with_screenshot": 0,
+        "tool_errors_total": 0
+      },
+      "runs": [
+        {
+          "ok": false,
+          "rtt_ms": 300011.942417,
+          "http_error": true,
+          "error": "fetch: client timeout",
+          "total_tools": 0
+        }
+      ]
+    }
+  ]
+}

@@ -1380,13 +1380,23 @@ async function getTargetTab() {
     } catch {}
     lockedTabId = null;
   }
-  // Query active tab in THIS sidepanel's window first
+  // Query active tab in THIS sidepanel's window first.
+  // Only filter chrome-extension:// (the agent's own UI). Allow chrome://newtab
+  // and similar — the agent's task may navigate them away. Skipping these
+  // and falling back to lastFocused window across all browsers caused all
+  // parallel sidepanels to dogpile onto the same window.
   if (currentWindowId && typeof currentWindowId === 'number') {
     const tabs = await chrome.tabs.query({ active: true, windowId: currentWindowId });
-    const tab = tabs.find(t => !t.url?.startsWith('chrome-extension://') && !t.url?.startsWith('chrome://'));
+    const tab = tabs.find(t => !t.url?.startsWith('chrome-extension://'));
     if (tab) { lockedTabId = tab.id; return tab.id; }
   }
-  // Fallback: last focused window
+  // Fallback: any tab in our own window (rare — current windowId set but query empty)
+  if (currentWindowId && typeof currentWindowId === 'number') {
+    const ownTabs = await chrome.tabs.query({ windowId: currentWindowId });
+    const tab = ownTabs.find(t => !t.url?.startsWith('chrome-extension://'));
+    if (tab) { lockedTabId = tab.id; return tab.id; }
+  }
+  // Last resort: last focused window (used when sidepanel has no associated window)
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   let tab = tabs.find(t => !t.url?.startsWith('chrome-extension://') && !t.url?.startsWith('chrome://'));
   if (!tab) { const all = await chrome.tabs.query({}); tab = all.find(t => t.url?.startsWith('http')); }
