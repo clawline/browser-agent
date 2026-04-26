@@ -680,23 +680,34 @@ document.getElementById('cfg-import-file').addEventListener('change', async (e) 
 // install the latest skill into their Claude Code config without going to
 // the source repo. Saved as `browser-agent-SKILL.md` to avoid clobbering
 // other skills if the user downloads multiple.
-document.getElementById('cfg-download-skill').addEventListener('click', async () => {
+// Helper: fetch a bundled skill asset and trigger a browser download.
+// Used by the Settings panel "Download SKILL.md" / "Download discover.mjs"
+// buttons so users can install the skill into ~/.claude/skills/browser-agent/.
+async function downloadSkillAsset(srcPath, downloadName, mimeType) {
   try {
-    const url = chrome.runtime.getURL('skill/SKILL.md');
+    const url = chrome.runtime.getURL(srcPath);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
-    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const blob = new Blob([text], { type: `${mimeType};charset=utf-8` });
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = 'browser-agent-SKILL.md';
+    a.download = downloadName;
     a.click();
     URL.revokeObjectURL(blobUrl);
-    setStatus('SKILL.md downloaded'); setTimeout(() => setStatus(''), 2000);
+    setStatus(`${downloadName} downloaded`); setTimeout(() => setStatus(''), 2000);
   } catch (err) {
     setStatus(`Download failed: ${err.message}`); setTimeout(() => setStatus(''), 3000);
   }
+}
+
+document.getElementById('cfg-download-skill').addEventListener('click', () => {
+  downloadSkillAsset('skill/SKILL.md', 'SKILL.md', 'text/markdown');
+});
+
+document.getElementById('cfg-download-discover').addEventListener('click', () => {
+  downloadSkillAsset('skill/discover.mjs', 'discover.mjs', 'application/javascript');
 });
 
 modelSelect.addEventListener('change', () => localStorage.setItem('clawline-model', modelSelect.value));

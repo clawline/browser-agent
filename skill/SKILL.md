@@ -1,6 +1,6 @@
 ---
 name: browser-agent
-version: 4.1.0
+version: 4.2.0
 description: |
   Clawline Browser Agent — control Chrome tabs via HTTP Hook API.
   Navigate, click, fill forms, take screenshots, extract content,
@@ -232,10 +232,10 @@ wait
 
 ### Recommended: discover.mjs
 
-The browser-agent project ships a discovery script at `~/Projects/clawline/browser-agent/perf/discover.mjs`. Always use the JSON form for programmatic targeting:
+The discovery script ships **inside this skill folder** at `~/.claude/skills/browser-agent/discover.mjs`. Always use the JSON form for programmatic targeting:
 
 ```bash
-node ~/Projects/clawline/browser-agent/perf/discover.mjs --json
+node ~/.claude/skills/browser-agent/discover.mjs --json
 ```
 
 Returns:
