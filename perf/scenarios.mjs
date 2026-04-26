@@ -6,11 +6,13 @@
  * Outputs perf-reports/<timestamp>/ with baseline.md, decisiveness.md, raw.json.
  *
  * Usage:
- *   node perf/scenarios.mjs                       # run all
- *   node perf/scenarios.mjs --scenarios=S1,S8     # subset (matches by id prefix)
+ *   node perf/scenarios.mjs                       # run all (serial)
+ *   node perf/scenarios.mjs --scenarios=S1,S8     # subset (matches by id family)
  *   node perf/scenarios.mjs --n=10                # initial N (default 10)
  *   node perf/scenarios.mjs --skip-manual         # skip S6 (kill host) and S7 (multi-window)
  *   node perf/scenarios.mjs --label=baseline      # report folder label suffix
+ *   node perf/scenarios.mjs --parallel=auto       # fan out across all sidepanels
+ *   node perf/scenarios.mjs --parallel=4          # 4 workers (caps at sidepanel count)
  *   HOOK_PORT=4822 node perf/scenarios.mjs        # override port
  */
 
@@ -702,6 +704,7 @@ async function runOnce(scenario, extraBody = {}) {
   const analyzed = analyzeRun(parsed, rtt_ms, scenario);
   analyzed.http_status = response.status;
   analyzed.raw_tools = parsed.tools || [];
+  analyzed.windowId = extraBody.windowId ?? null;  // track which sidepanel ran this
   return analyzed;
 }
 
@@ -740,12 +743,14 @@ function computeStats(runs) {
   };
 }
 
-async function runStandardScenario(scenario, n) {
-  log(`\n▶ ${scenario.id}: ${scenario.name}  (n=${n}, cat=${scenario.category || '?'}, dim=${scenario.dimension})`);
+async function runStandardScenario(scenario, n, windowId = null) {
+  const winTag = windowId ? ` [w=${windowId}]` : '';
+  log(`\n▶ ${scenario.id}: ${scenario.name}  (n=${n}, cat=${scenario.category || '?'}, dim=${scenario.dimension})${winTag}`);
   const runs = [];
+  const extra = windowId ? { windowId } : {};
   for (let i = 1; i <= n; i++) {
-    logRaw(`  [${scenario.id} ${i}/${n}] `);
-    const r = await runOnce(scenario);
+    logRaw(`  [${scenario.id} ${i}/${n}${winTag}] `);
+    const r = await runOnce(scenario, extra);
     runs.push(r);
     let summary;
     if (r.ok) {
@@ -762,12 +767,10 @@ async function runStandardScenario(scenario, n) {
   let stats = computeStats(runs);
 
   if (n < N_LONGTAIL && stats.rtt_p50 > 0 && stats.rtt_p95 / stats.rtt_p50 > 3 && !scenario.validator) {
-    // Long-tail extension only for atomic scenarios (no validator). Workflow
-    // scenarios are too slow/expensive to extend automatically.
     log(`  ⤷ long tail detected (p95/p50=${(stats.rtt_p95 / stats.rtt_p50).toFixed(2)}), extending to N=${N_LONGTAIL}`);
     for (let i = n + 1; i <= N_LONGTAIL; i++) {
-      logRaw(`  [${scenario.id} ${i}/${N_LONGTAIL}] `);
-      const r = await runOnce(scenario);
+      logRaw(`  [${scenario.id} ${i}/${N_LONGTAIL}${winTag}] `);
+      const r = await runOnce(scenario, extra);
       runs.push(r);
       const summary = r.ok
         ? `✓ rtt=${Math.round(r.rtt_ms)}ms tools=${r.total_tools}`
@@ -785,6 +788,7 @@ async function runStandardScenario(scenario, n) {
     theoretical_min_tools: scenario.theoretical_min_tools,
     decisiveness: !!scenario.decisiveness,
     has_validator: typeof scenario.validator === 'function',
+    windowId,
     stats,
     runs,
   };
@@ -1063,25 +1067,53 @@ async function main() {
     n_longtail: N_LONGTAIL,
   };
 
-  // Step 3: run scenarios
+  // Step 3: run scenarios — parallel across windowIds when --parallel set
   const results = [];
   const standardScenarios = SCENARIOS.filter(s =>
     !SELECTED || SELECTED.some(sel => selectionMatches(s.id, sel))
   );
 
-  for (const scenario of standardScenarios) {
-    // Per-scenario N: explicit override > category default > CLI N
-    const scenarioN = scenario.n_override
-      ?? (argMap.n ? N : (scenario.category ? defaultNForCategory(scenario.category) : N));
-    try {
-      const r = await runStandardScenario(scenario, scenarioN);
-      results.push(r);
-    } catch (e) {
-      log(`  ✗ ${scenario.id} threw: ${e.message} — continuing`);
-      results.push({ id: scenario.id, name: scenario.name, category: scenario.category, dimension: scenario.dimension, error: e.message });
-      // Don't throw — let the rest of the suite run. Errored scenario is in results with .error.
+  // Determine parallelism. --parallel=N forces N workers. --parallel=auto uses
+  // all available windowIds. Default (no flag) = serial (no windowId pinning).
+  const availableWindowIds = sessions
+    .map(s => s.windowId)
+    .filter(w => typeof w === 'number');
+  let workerCount = 1;
+  let workerWindowIds = [null];  // null = no windowId, server picks focused window
+  if (argMap.parallel) {
+    const requested = argMap.parallel === 'auto' || argMap.parallel === true
+      ? availableWindowIds.length
+      : parseInt(argMap.parallel, 10);
+    workerCount = Math.max(1, Math.min(requested || 1, availableWindowIds.length));
+    workerWindowIds = availableWindowIds.slice(0, workerCount);
+    if (workerCount < (parseInt(argMap.parallel, 10) || 0)) {
+      log(`⚠ Requested --parallel=${argMap.parallel} but only ${availableWindowIds.length} sidepanel(s) registered. Using ${workerCount}.`);
+    }
+    log(`\n→ Parallel mode: ${workerCount} worker(s) on windowIds [${workerWindowIds.join(', ')}]`);
+  }
+
+  // Build work queue (each item: scenario + N) and a worker pool
+  const queue = standardScenarios.map(scenario => ({
+    scenario,
+    n: scenario.n_override
+      ?? (argMap.n ? N : (scenario.category ? defaultNForCategory(scenario.category) : N)),
+  }));
+
+  // Worker drains the queue, each scenario pinned to its windowId
+  async function worker(windowId) {
+    while (queue.length) {
+      const { scenario, n } = queue.shift();
+      try {
+        const r = await runStandardScenario(scenario, n, windowId);
+        results.push(r);
+      } catch (e) {
+        log(`  ✗ ${scenario.id} threw: ${e.message} — continuing`);
+        results.push({ id: scenario.id, name: scenario.name, category: scenario.category, dimension: scenario.dimension, error: e.message });
+      }
     }
   }
+
+  await Promise.all(workerWindowIds.map(w => worker(w)));
 
   // S6 + S7 (manual)
   if (!SKIP_MANUAL) {
