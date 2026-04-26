@@ -1,11 +1,12 @@
 ---
 name: browser-agent
-version: 4.0.0
+version: 4.1.0
 description: |
   Clawline Browser Agent — control Chrome tabs via HTTP Hook API.
   Navigate, click, fill forms, take screenshots, extract content,
   emulate mobile devices, batch form operations.
   Multi-host discovery: scan all running instances across Chrome profiles.
+  Per-task API/key/model override. Reliable multi-sidepanel parallel routing.
   Use when asked to "test in browser", "open page", "check the site",
   "browser test", "integration test", "e2e test", or "use browser agent".
 allowed-tools:
@@ -24,6 +25,8 @@ You have access to a browser automation agent (Clawline) running as a Chrome ext
 **Delegate complete test flows, don't micromanage.**
 
 The browser agent is intelligent. Send it a full test scenario in one task and let it execute the entire flow independently. You only need to read the result.
+
+The agent's system prompt now contains an explicit "one-shot execution" rule: when given a complete spec with numbered steps, URLs, and an output format, it MUST execute directly without re-planning, re-explaining, or re-confirming. Your tasks SHOULD use that contract — front-load all instructions and expected output. Detailed task specs measurably finish faster (W15 benchmark: 99s → 39s, -60% RTT, after rule was introduced).
 
 **Bad** (micromanaging — 4 separate calls):
 ```
@@ -58,12 +61,14 @@ curl -s -X POST http://127.0.0.1:4821/hook \
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `task` | string | Yes | Complete test scenario in natural language |
-| `windowId` | number | No | Target window (required for multi-window tests) |
-| `tabId` | number | No | Target tab (overrides windowId) |
+| `windowId` | number | No | Target window. **Always pass when more than one sidepanel is registered** — without it, routing falls back to focused window and parallel tasks may collide. Get from `discover.mjs --json`. |
+| `tabId` | number | No | Target tab (overrides windowId). chrome://newtab/ tabs are honored as explicit lock targets. |
 | `conversationId` | string | No | Continue previous conversation context |
-| `model` | string | No | `claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5-20251001` |
+| `model` | string | No | Per-task model override: `claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5-20251001` |
+| `apiUrl` | string | No | Per-task API base URL override (A/B test endpoints without touching sidepanel settings). NOT persisted. |
+| `apiKey` | string | No | Per-task API key override. NOT persisted — sidepanel restores its own key after the task. Avoid sending empty string; only set when you want to override. |
+| `include_tools` | boolean | No | Return full tool-call records for analysis |
 | `include_screenshot` | boolean | No | Return final screenshot as base64 |
-| `include_tools` | boolean | No | Return tool call records |
 
 **Response:** `{ "status": "completed", "result": "...", "conversationId": "...", "tabId": 12345 }`
 
