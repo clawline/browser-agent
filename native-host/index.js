@@ -188,6 +188,32 @@ function generateTaskId() {
   return 'task_' + Date.now() + '_' + (++taskCounter);
 }
 
+// Mutate sessions[] in place, adding `busy` + `runningTasks` per window based
+// on currently-pending /hook requests. Lets callers see which sidepanels are
+// occupied before launching parallel work.
+function annotateBusy(sessions) {
+  if (!Array.isArray(sessions)) return sessions;
+  const byWindow = new Map(); // windowId → [{taskId, startedAt, tabId}]
+  const now = Date.now();
+  for (const [taskId, p] of pendingRequests) {
+    if (typeof taskId !== 'string' || taskId.startsWith('__')) continue;
+    if (p.windowId == null) continue;
+    if (!byWindow.has(p.windowId)) byWindow.set(p.windowId, []);
+    byWindow.get(p.windowId).push({
+      taskId,
+      tabId: p.tabId,
+      startedAt: p.startedAt || null,
+      runningMs: p.startedAt ? now - p.startedAt : null,
+    });
+  }
+  for (const s of sessions) {
+    const tasks = byWindow.get(s.windowId) || [];
+    s.busy = tasks.length > 0;
+    s.runningTasks = tasks;
+  }
+  return sessions;
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -275,7 +301,7 @@ const server = createServer(async (req, res) => {
           pendingRequests.delete(taskId);
           resolve({ status: 'timeout', taskId, error: 'Request timed out' });
         }, REQUEST_TIMEOUT);
-        pendingRequests.set(taskId, { resolve, timer });
+        pendingRequests.set(taskId, { resolve, timer, windowId: body.windowId || null, tabId: body.tabId || null, startedAt: Date.now() });
       });
 
       // If the HTTP client disconnects before the task finishes, free the timer
@@ -355,6 +381,7 @@ const server = createServer(async (req, res) => {
 
       sendToChrome({ action: 'list_sessions' });
       const result = await promise;
+      annotateBusy(result.sessions);
       sendJSON(res, 200, result);
       return;
     }
@@ -377,7 +404,7 @@ const server = createServer(async (req, res) => {
         pendingTasks: pendingRequests.size,
         extensionName: lastSessionsInfo?.extensionName || null,
         extensionVersion: lastSessionsInfo?.extensionVersion || null,
-        windows: lastSessionsInfo?.sessions || [],
+        windows: annotateBusy(structuredClone(lastSessionsInfo?.sessions || [])),
         sessionsFetchedAt: lastSessionsInfo?.fetchedAt || null,
       });
       return;

@@ -266,8 +266,21 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onMessage.addListener((msg) => {
     if (msg.type === 'register') {
-      // Remove temp entry, register with real windowId
+      // Drop any prior key for this port (initial temp id, or a stale
+      // self-corrected id if the sidepanel re-corrects later).
+      if (registeredWindowId !== null) {
+        const existing = sidepanelPorts.get(registeredWindowId);
+        if (existing === port) sidepanelPorts.delete(registeredWindowId);
+      }
       sidepanelPorts.delete(tempId);
+      // If another port is already registered under this windowId, evict it —
+      // it's almost certainly a stale entry from a sidepanel that registered
+      // with the wrong (focused) windowId before self-correcting.
+      const collision = sidepanelPorts.get(msg.windowId);
+      if (collision && collision !== port) {
+        console.log('[clawline] evicting stale port for windowId:', msg.windowId);
+        try { collision.disconnect(); } catch {}
+      }
       registeredWindowId = msg.windowId;
       sidepanelPorts.set(msg.windowId, port);
       console.log('[clawline] sidepanel registered, windowId:', msg.windowId);

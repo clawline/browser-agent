@@ -25,15 +25,20 @@ const _RECONNECT_MAX_DELAY = 30000;
     _reconnectAttempts = 0; // Reset on successful connect
     console.log('[clawline-hook] port connected');
 
+    // Initial registration uses a temp id; the real windowId is resolved
+    // when this sidepanel first becomes visible (see selfCorrectWindowId).
+    // chrome.windows.getCurrent() in a sidepanel context unreliably returns
+    // the *focused* window rather than this sidepanel's own window — when
+    // multiple sidepanels are open in the same profile they all collide on
+    // the same id. Self-correction on visibilitychange fixes this because
+    // a sidepanel is only visible inside its own window.
     (async () => {
-      let windowId = null;
-      try { windowId = (await chrome.windows.getCurrent()).id; } catch {}
-      if (!windowId) try { windowId = (await chrome.windows.getLastFocused()).id; } catch {}
-      if (!windowId) try { const t = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); if (t[0]) windowId = t[0].windowId; } catch {}
-      if (!windowId) windowId = 'sp_' + Date.now();
-      currentWindowId = windowId;
-      console.log('[clawline-hook] register windowId:', windowId);
-      swPort.postMessage({ type: 'register', windowId });
+      const tempId = 'sp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      currentWindowId = tempId;
+      console.log('[clawline-hook] register tempId:', tempId);
+      swPort.postMessage({ type: 'register', windowId: tempId });
+      // Try an immediate correction in case we're already visible
+      selfCorrectWindowId();
     })();
 
     swPort.onMessage.addListener((msg) => {
@@ -67,6 +72,25 @@ const _RECONNECT_MAX_DELAY = 30000;
     swPort = null;
   }
 })();
+
+// Resolve this sidepanel's own windowId. Only reliable when the sidepanel is
+// currently visible — at that moment the focused window MUST be ours, since
+// non-focused windows' sidepanels are hidden by Chrome.
+async function selfCorrectWindowId() {
+  if (document.visibilityState !== 'visible') return;
+  if (!swPort) return;
+  if (typeof currentWindowId === 'number') return; // already corrected
+  let windowId = null;
+  try { windowId = (await chrome.windows.getLastFocused({ windowTypes: ['normal'] })).id; } catch {}
+  if (typeof windowId !== 'number') return;
+  currentWindowId = windowId;
+  console.log('[clawline-hook] self-corrected windowId:', windowId);
+  try { swPort.postMessage({ type: 'register', windowId }); } catch {}
+  try { renderBridgePanel(); } catch {}
+}
+
+document.addEventListener('visibilitychange', selfCorrectWindowId);
+window.addEventListener('focus', selfCorrectWindowId);
 
 // ── Error logging — capture and send to native host via service worker ──
 
@@ -121,6 +145,15 @@ function renderBridgePanel() {
   if (portVal) {
     portVal.textContent = hookHostPort != null ? String(hookHostPort) : '—';
     portVal.className = 'bp-val ' + (hookHostPort != null ? 'bp-on' : 'bp-off');
+  }
+
+  const windowVal = document.getElementById('bp-window-val');
+  if (windowVal) {
+    const isResolved = typeof currentWindowId === 'number';
+    windowVal.textContent = isResolved
+      ? String(currentWindowId)
+      : (currentWindowId ? 'pending (focus this window)' : '—');
+    windowVal.className = 'bp-val ' + (isResolved ? 'bp-on' : 'bp-off');
   }
 
   // API status — show current URL, ping later

@@ -77,8 +77,15 @@ async function main() {
       for (const w of wins) {
         const focus = w.focused ? ' [focused]' : '';
         const incog = w.incognito ? ' [incognito]' : '';
+        const busy = w.busy ? ' [BUSY]' : ' [idle]';
         const tabs = typeof w.tabCount === 'number' ? `${w.tabCount} tab(s)` : '';
-        console.log(`      windowId=${w.windowId}${focus}${incog}  ${tabs}`);
+        console.log(`      windowId=${w.windowId}${focus}${incog}${busy}  ${tabs}`);
+        if (Array.isArray(w.runningTasks) && w.runningTasks.length) {
+          for (const rt of w.runningTasks) {
+            const dur = typeof rt.runningMs === 'number' ? `${Math.round(rt.runningMs / 1000)}s` : '?';
+            console.log(`          running: ${rt.taskId}  (${dur})`);
+          }
+        }
         const tabList = Array.isArray(w.tabs) ? w.tabs : (w.activeTab ? [w.activeTab] : []);
         for (const t of tabList) {
           const marker = t.active ? '●' : '○';

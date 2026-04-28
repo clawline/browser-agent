@@ -277,6 +277,7 @@ When multiple hosts are running, choose by intent:
 
 - **By URL**: pick the host whose `windows[].activeTab.url` matches the site under test
 - **By window focus**: pick the host with `windows[].focused: true`
+- **By idle status**: pick a window where `windows[].busy === false` to avoid colliding with an in-flight task. The discovery output annotates each window with `busy` (boolean) and `runningTasks: [{taskId, tabId, runningMs}]`. Pretty-print mode shows `[BUSY]` or `[idle]` next to each `windowId`.
 - **By extension version**: when running multiple branches in parallel, version disambiguates them
 - **Explicit user request**: ask the user "which port?" and quote `windows[].activeTab.title` for each
 
@@ -302,6 +303,10 @@ Exit code 1 from `discover.mjs` means nothing is reachable. Tell the user to:
 3. Verify the bridge panel inside the side panel shows `Hook Bridge: Connected` and `Host Port: 4821` (or similar)
 
 The bridge panel inside the sidepanel is the source of truth for "this sidepanel is talking to which port".
+
+### When a sidepanel is missing from /sessions
+
+If a Chrome profile has multiple windows and a sidepanel is visibly open in one of them but `/sessions` doesn't list its `windowId`, ask the user to **click that window's title bar to focus it once**. Sidepanels self-resolve their own `windowId` on `visibilitychange`/`focus`, so a sidepanel that has never been focused since the extension last loaded won't have a numeric `windowId` registered yet — it can't be routed to until it's been visible at least once.
 
 ## Test Account
 
