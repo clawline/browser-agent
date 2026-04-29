@@ -55,7 +55,7 @@ async function openSidePanel(tab) {
   if (!tabId) return;
 
   // Open side panel (no await between these two — preserves user gesture)
-  chrome.sidePanel.setOptions({ tabId, path: 'sidepanel.html', enabled: true });
+  chrome.sidePanel.setOptions({ tabId, path: `sidepanel.html?tabId=${encodeURIComponent(tabId)}`, enabled: true });
   chrome.sidePanel.open({ tabId });
 
   // Create tab group (same as Claude's extension)
@@ -89,6 +89,7 @@ chrome.commands.onCommand.addListener((command) => {
 
 // Sidepanel port registry (declared before connectNativeHost which references it)
 const sidepanelPorts = new Map(); // windowId → port
+const sidepanelHostTabs = new Map(); // windowId → tabId that opened the sidepanel
 
 // Native host connection state
 let reconnectAttempt = 0;
@@ -270,9 +271,13 @@ chrome.runtime.onConnect.addListener((port) => {
       // self-corrected id if the sidepanel re-corrects later).
       if (registeredWindowId !== null) {
         const existing = sidepanelPorts.get(registeredWindowId);
-        if (existing === port) sidepanelPorts.delete(registeredWindowId);
+        if (existing === port) {
+          sidepanelPorts.delete(registeredWindowId);
+          sidepanelHostTabs.delete(registeredWindowId);
+        }
       }
       sidepanelPorts.delete(tempId);
+      sidepanelHostTabs.delete(tempId);
       // If another port is already registered under this windowId, evict it —
       // it's almost certainly a stale entry from a sidepanel that registered
       // with the wrong (focused) windowId before self-correcting.
@@ -283,7 +288,9 @@ chrome.runtime.onConnect.addListener((port) => {
       }
       registeredWindowId = msg.windowId;
       sidepanelPorts.set(msg.windowId, port);
-      console.log('[clawline] sidepanel registered, windowId:', msg.windowId);
+      if (typeof msg.tabId === 'number') sidepanelHostTabs.set(msg.windowId, msg.tabId);
+      else sidepanelHostTabs.delete(msg.windowId);
+      console.log('[clawline] sidepanel registered, windowId:', msg.windowId, 'tabId:', sidepanelHostTabs.get(msg.windowId) || 'unknown');
       // Send current hook status immediately
       try { port.postMessage({ type: 'hook_status', connected: !!nativePort, port: hookPort }); } catch (e) { console.warn('[clawline] send hook_status failed:', e.message); }
       return;
@@ -304,8 +311,10 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onDisconnect.addListener(() => {
     sidepanelPorts.delete(tempId);
+    sidepanelHostTabs.delete(tempId);
     if (registeredWindowId !== null) {
       sidepanelPorts.delete(registeredWindowId);
+      sidepanelHostTabs.delete(registeredWindowId);
     }
   });
 });
@@ -331,6 +340,8 @@ async function handleNativeMessage(msg) {
         continue;
       }
       const session = { windowId };
+      const sidepanelTabId = sidepanelHostTabs.get(windowId);
+      if (typeof sidepanelTabId === 'number') session.sidepanelTabId = sidepanelTabId;
       try {
         const win = await chrome.windows.get(windowId);
         session.focused = !!win.focused;
@@ -356,6 +367,14 @@ async function handleNativeMessage(msg) {
             id: active.id,
             title: (active.title || '').slice(0, 120),
             url: active.url || '',
+          };
+        }
+        const sidepanelTab = typeof sidepanelTabId === 'number' ? tabs.find(t => t.id === sidepanelTabId) : null;
+        if (sidepanelTab) {
+          session.sidepanelTab = {
+            id: sidepanelTab.id,
+            title: (sidepanelTab.title || '').slice(0, 120),
+            url: sidepanelTab.url || '',
           };
         }
       } catch {}
@@ -384,17 +403,20 @@ async function handleNativeMessage(msg) {
 
   // Route task to target sidepanel
   let targetPort = null;
+  let targetWindowId = null;
 
   if (msg.windowId && sidepanelPorts.has(msg.windowId)) {
     targetPort = sidepanelPorts.get(msg.windowId);
+    targetWindowId = msg.windowId;
   } else if (msg.tabId) {
     try {
       const tab = await chrome.tabs.get(msg.tabId);
       if (sidepanelPorts.has(tab.windowId)) {
         targetPort = sidepanelPorts.get(tab.windowId);
+        targetWindowId = tab.windowId;
       } else {
         // Open sidepanel for this tab
-        chrome.sidePanel.setOptions({ tabId: msg.tabId, path: 'sidepanel.html', enabled: true });
+        chrome.sidePanel.setOptions({ tabId: msg.tabId, path: `sidepanel.html?tabId=${encodeURIComponent(msg.tabId)}`, enabled: true });
         chrome.sidePanel.open({ windowId: tab.windowId });
         // Poll for sidepanel registration (200ms intervals, 5s timeout)
         for (let i = 0; i < 25; i++) {
@@ -402,6 +424,7 @@ async function handleNativeMessage(msg) {
           if (sidepanelPorts.has(tab.windowId)) break;
         }
         targetPort = sidepanelPorts.get(tab.windowId);
+        targetWindowId = targetPort ? tab.windowId : null;
       }
     } catch (e) {
       if (nativePort) {
@@ -425,9 +448,12 @@ async function handleNativeMessage(msg) {
       const targetWin = focused || wins[0];
       if (targetWin && sidepanelPorts.has(targetWin.id)) {
         targetPort = sidepanelPorts.get(targetWin.id);
+        targetWindowId = targetWin.id;
       } else if (sidepanelPorts.size > 0) {
         // Fall back to any connected sidepanel
-        targetPort = sidepanelPorts.values().next().value;
+        const first = sidepanelPorts.entries().next().value;
+        targetWindowId = first?.[0] || null;
+        targetPort = first?.[1] || null;
       }
     } catch (e) { console.warn('[clawline] window lookup failed:', e.message); }
   }
@@ -447,7 +473,12 @@ async function handleNativeMessage(msg) {
   }
 
   try {
-    targetPort.postMessage({ type: 'hook_task', ...msg });
+    const routed = { type: 'hook_task', ...msg };
+    if (!routed.tabId && targetWindowId != null) {
+      const sidepanelTabId = sidepanelHostTabs.get(targetWindowId);
+      if (typeof sidepanelTabId === 'number') routed.tabId = sidepanelTabId;
+    }
+    targetPort.postMessage(routed);
   } catch (e) {
     if (nativePort) {
       try {

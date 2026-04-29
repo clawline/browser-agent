@@ -15,9 +15,16 @@ const MAX_TOKENS = 10000;
 let swPort = null;
 let activeHookTaskId = null;
 let currentWindowId = null; // This sidepanel's window — used by getTargetTab()
+let sidepanelHostTabId = null; // The tab that opened this sidepanel, passed by service-worker in the URL
 let _reconnectAttempts = 0;
 const _RECONNECT_MAX_RETRIES = 20;
 const _RECONNECT_MAX_DELAY = 30000;
+
+try {
+  const tabIdParam = new URLSearchParams(location.search).get('tabId');
+  const parsedTabId = tabIdParam ? Number(tabIdParam) : NaN;
+  if (Number.isInteger(parsedTabId) && parsedTabId > 0) sidepanelHostTabId = parsedTabId;
+} catch {}
 
 (function initHookConnection() {
   try {
@@ -35,8 +42,8 @@ const _RECONNECT_MAX_DELAY = 30000;
     (async () => {
       const tempId = 'sp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       currentWindowId = tempId;
-      console.log('[clawline-hook] register tempId:', tempId);
-      swPort.postMessage({ type: 'register', windowId: tempId });
+      console.log('[clawline-hook] register tempId:', tempId, 'hostTabId:', sidepanelHostTabId);
+      swPort.postMessage({ type: 'register', windowId: tempId, tabId: sidepanelHostTabId });
       // Try an immediate correction in case we're already visible
       selfCorrectWindowId();
     })();
@@ -85,7 +92,7 @@ async function selfCorrectWindowId() {
   if (typeof windowId !== 'number') return;
   currentWindowId = windowId;
   console.log('[clawline-hook] self-corrected windowId:', windowId);
-  try { swPort.postMessage({ type: 'register', windowId }); } catch {}
+  try { swPort.postMessage({ type: 'register', windowId, tabId: sidepanelHostTabId }); } catch {}
   try { renderBridgePanel(); } catch {}
 }
 
@@ -497,6 +504,7 @@ let abortController = null;
 let pendingImages = [];
 let thinkingEnabled = false;
 let fastMode = false;
+let lastRunError = null;
 
 // ── DOM ──
 
@@ -583,18 +591,26 @@ let currentSkillMode = 'general';
 const savedApiUrl = localStorage.getItem('clawline-api-url');
 if (savedApiUrl) API_URL = savedApiUrl;
 // API_KEY is kept in chrome.storage.session (memory-only, cleared when the
-// browser closes). A one-time migration moves any legacy plaintext value out
-// of localStorage so we don't leave secrets at rest on disk.
+// browser closes) and chrome.storage.local (persistent across extension reloads).
+// local is used because native-host workflows need the sidepanel to survive
+// unpacked-extension reloads without losing its API configuration.
 (async () => {
   try {
     const legacy = localStorage.getItem('clawline-api-key');
     if (legacy) {
+      await chrome.storage.local.set({ 'clawline-api-key': legacy });
       await chrome.storage.session.set({ 'clawline-api-key': legacy });
       localStorage.removeItem('clawline-api-key');
       API_KEY = legacy;
     } else {
-      const res = await chrome.storage.session.get('clawline-api-key');
-      if (res['clawline-api-key']) API_KEY = res['clawline-api-key'];
+      const persisted = await chrome.storage.local.get('clawline-api-key');
+      if (persisted['clawline-api-key']) {
+        API_KEY = persisted['clawline-api-key'];
+        await chrome.storage.session.set({ 'clawline-api-key': API_KEY });
+      } else {
+        const res = await chrome.storage.session.get('clawline-api-key');
+        if (res['clawline-api-key']) API_KEY = res['clawline-api-key'];
+      }
     }
   } catch (e) { console.warn('[clawline] api key load failed:', e); }
 })();
@@ -659,7 +675,15 @@ document.getElementById('cfg-save').addEventListener('click', async () => {
   API_URL = cfgApiUrl.value.trim() || 'http://127.0.0.1:4819';
   API_KEY = cfgApiKey.value.trim();
   localStorage.setItem('clawline-api-url', API_URL);
-  try { await chrome.storage.session.set({ 'clawline-api-key': API_KEY }); } catch (e) { console.warn('[clawline] api key save failed:', e); }
+  try {
+    if (API_KEY) {
+      await chrome.storage.local.set({ 'clawline-api-key': API_KEY });
+      await chrome.storage.session.set({ 'clawline-api-key': API_KEY });
+    } else {
+      await chrome.storage.local.remove('clawline-api-key');
+      await chrome.storage.session.remove('clawline-api-key');
+    }
+  } catch (e) { console.warn('[clawline] api key save failed:', e); }
   settingsPanel.style.display = 'none';
   setStatus('Settings saved'); setTimeout(() => setStatus(''), 1500);
 });
@@ -930,7 +954,7 @@ document.getElementById('new-chat').addEventListener('click', () => {
   messagesEl.innerHTML = '';
   pendingImages = [];
   attachmentsEl.innerHTML = '';
-  lockedTabId = null; // Reset tab lock for new conversation
+  lockedTabId = sidepanelHostTabId; // Reset to the tab that opened this sidepanel
   renderConversationList();
 });
 
@@ -1408,10 +1432,32 @@ async function postActionWait(tabId, args) {
   return ` [wait_for=${args.wait_for}:${reason}]`;
 }
 
+function mouseModifierBits(modifiers) {
+  if (!modifiers || typeof modifiers !== 'string') return 0;
+  let bits = 0;
+  for (const raw of modifiers.toLowerCase().split('+').map(s => s.trim()).filter(Boolean)) {
+    if (raw === 'alt') bits |= 1;
+    if (raw === 'ctrl' || raw === 'control') bits |= 2;
+    if (raw === 'cmd' || raw === 'meta' || raw === 'win' || raw === 'windows') bits |= 4;
+    if (raw === 'shift') bits |= 8;
+  }
+  return bits;
+}
+
+async function dispatchMouseClick(tabId, x, y, action, modifiers) {
+  const count = action === 'double_click' ? 2 : action === 'triple_click' ? 3 : 1;
+  const button = action === 'right_click' ? 'right' : 'left';
+  const modBits = mouseModifierBits(modifiers);
+  await ensureDebugger(tabId);
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', modifiers: modBits });
+  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count, modifiers: modBits });
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count, modifiers: modBits });
+}
+
 // ── Tool Execution ──
 
 // Lock target tab at start of agent loop — survives user switching tabs
-let lockedTabId = null;
+let lockedTabId = sidepanelHostTabId;
 
 async function getTargetTab() {
   if (lockedTabId) {
@@ -1423,6 +1469,19 @@ async function getTargetTab() {
       if (tab) return lockedTabId;
     } catch {}
     lockedTabId = null;
+  }
+  // Default to the tab that opened this sidepanel. This is the least
+  // surprising behavior for tab-scoped sidepanels and prevents active-tab drift.
+  if (sidepanelHostTabId) {
+    try {
+      const tab = await chrome.tabs.get(sidepanelHostTabId);
+      if (tab && !tab.url?.startsWith('chrome-extension://')) {
+        lockedTabId = sidepanelHostTabId;
+        return sidepanelHostTabId;
+      }
+    } catch {
+      sidepanelHostTabId = null;
+    }
   }
   // Query active tab in THIS sidepanel's window first.
   // Only filter chrome-extension:// (the agent's own UI). Allow chrome://newtab
@@ -1518,6 +1577,52 @@ async function injectContentScript(tabId) {
         }
         return null;
       };
+      window.__clawlineSetFormValue = (el, value) => {
+        if (!el) return { ok: false, error: 'No element provided' };
+        const tag = el.tagName.toLowerCase();
+        const fire = () => {
+          try { el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(value) })); }
+          catch { el.dispatchEvent(new Event('input', { bubbles: true })); }
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const setNative = (prop, nextValue) => {
+          const own = Object.getOwnPropertyDescriptor(el, prop);
+          const proto = Object.getPrototypeOf(el);
+          const protoDesc = proto ? Object.getOwnPropertyDescriptor(proto, prop) : null;
+          const setter = protoDesc?.set || own?.set;
+          if (setter) setter.call(el, nextValue);
+          else el[prop] = nextValue;
+        };
+        if (tag === 'select') {
+          const opts = Array.from(el.options);
+          const wanted = String(value);
+          const opt = opts.find(o => o.value === wanted || o.text.trim() === wanted);
+          if (!opt) return { ok: false, tag, error: `No option matching "${wanted}". Available: ${opts.map(o => o.value || o.text.trim()).slice(0, 10).join(', ')}` };
+          setNative('value', opt.value);
+          fire();
+          return { ok: el.value === opt.value, tag, actual: el.value, expected: opt.value };
+        }
+        if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) {
+          const expected = typeof value === 'boolean' ? value : !!value;
+          setNative('checked', expected);
+          fire();
+          return { ok: !!el.checked === expected, tag, actual: !!el.checked, expected };
+        }
+        if ('value' in el) {
+          const expected = String(value);
+          setNative('value', expected);
+          try { el.setSelectionRange?.(el.value.length, el.value.length); } catch {}
+          fire();
+          return { ok: String(el.value) === expected, tag, actual: String(el.value), expected };
+        }
+        if (el.isContentEditable) {
+          const expected = String(value);
+          el.textContent = expected;
+          fire();
+          return { ok: (el.textContent || '') === expected, tag, actual: el.textContent || '', expected };
+        }
+        return { ok: false, tag, error: `Element <${tag}> does not support value input.` };
+      };
       // Pre-cache selectors for all currently-mapped refs (typically populated
       // by the most recent read_page) so the fallback is ready before the
       // first ref-using tool runs.
@@ -1578,30 +1683,69 @@ async function _executeTool(name, args) {
             }
             el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
             const rect = el.getBoundingClientRect();
-            const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
-            if (action === 'left_click' || !action) el.click();
-            return { success: true, coordinates: [Math.round(x), Math.round(y)], tag: el.tagName, text: (el.textContent || '').slice(0, 50) };
+            if (rect.width <= 0 || rect.height <= 0) return { error: `Element ${refId} is not visible or has no clickable area.` };
+            const style = window.getComputedStyle(el);
+            if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || Number(style.opacity) === 0) {
+              return { error: `Element ${refId} is not interactable (display=${style.display}, visibility=${style.visibility}, pointer-events=${style.pointerEvents}, opacity=${style.opacity}).` };
+            }
+            if (el.disabled || el.getAttribute('aria-disabled') === 'true') return { error: `Element ${refId} is disabled.` };
+            const x = Math.round(rect.left + rect.width / 2), y = Math.round(rect.top + rect.height / 2);
+            if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+              return { error: `Element ${refId} center is outside the viewport after scrolling: [${x},${y}].` };
+            }
+            const hit = document.elementFromPoint(x, y);
+            const hitOk = hit && (hit === el || el.contains(hit));
+            if (!hitOk) {
+              const hitText = hit ? (hit.getAttribute('aria-label') || hit.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+              return { error: `Element ${refId} is covered at center by <${hit?.tagName || 'none'}> "${hitText}". Try scroll_to, hover, or a coordinate click if intentional.` };
+            }
+            const before = {
+              url: location.href,
+              checked: 'checked' in el ? !!el.checked : undefined,
+              value: 'value' in el ? String(el.value).slice(0, 80) : undefined,
+              expanded: el.getAttribute('aria-expanded') || undefined,
+            };
+            return {
+              success: true,
+              coordinates: [x, y],
+              tag: el.tagName,
+              role: el.getAttribute('role') || '',
+              text: (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 50),
+              before,
+            };
           }, args: [args.ref, action] });
           const r = results?.[0]?.result;
           if (r?.error) return { content: [{ type: 'text', text: r.error }] };
-          if (action !== 'left_click' && r?.coordinates) {
-            const [x, y] = r.coordinates;
-            const count = action === 'double_click' ? 2 : action === 'triple_click' ? 3 : 1;
-            const button = action === 'right_click' ? 'right' : 'left';
-            await ensureDebugger(tabId);
-            await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
-            await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
-          }
+          if (r?.coordinates) await dispatchMouseClick(tabId, r.coordinates[0], r.coordinates[1], action, args.modifiers);
           const waitInfo = await postActionWait(tabId, args);
-          return { content: [{ type: 'text', text: `Clicked ${args.ref} <${r?.tag}> "${r?.text}"${waitInfo}` }] };
+          let afterInfo = '';
+          try {
+            const afterResults = await chrome.scripting.executeScript({ target: { tabId }, func: (refId, before) => {
+              const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(refId) : (window.__clawlineElementMap?.[refId]?.deref() || null);
+              const after = { url: location.href };
+              if (el && document.contains(el)) {
+                if ('checked' in el) after.checked = !!el.checked;
+                if ('value' in el) after.value = String(el.value).slice(0, 80);
+                after.expanded = el.getAttribute('aria-expanded') || undefined;
+              } else {
+                after.detached = true;
+              }
+              const changes = [];
+              if (before?.url && before.url !== after.url) changes.push('url changed');
+              if (before?.checked !== undefined && before.checked !== after.checked) changes.push(`checked ${before.checked}->${after.checked}`);
+              if (before?.value !== undefined && before.value !== after.value) changes.push('value changed');
+              if (before?.expanded !== undefined && before.expanded !== after.expanded) changes.push(`expanded ${before.expanded}->${after.expanded}`);
+              if (after.detached) changes.push('element detached');
+              return changes.join(', ');
+            }, args: [args.ref, r.before || null] });
+            const changes = afterResults?.[0]?.result;
+            if (changes) afterInfo = ` [after: ${changes}]`;
+          } catch {}
+          return { content: [{ type: 'text', text: `Clicked ${args.ref} <${r?.tag}> "${r?.text}" at [${r?.coordinates?.join(',')}]${afterInfo}${waitInfo}` }] };
         }
         if (!args.coordinate) return { content: [{ type: 'text', text: 'Click requires either ref or coordinate parameter' }] };
         const [x, y] = scaleCoordinate(...args.coordinate);
-        const count = action === 'double_click' ? 2 : action === 'triple_click' ? 3 : 1;
-        const button = action === 'right_click' ? 'right' : 'left';
-        await ensureDebugger(tabId);
-        await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount: count });
-        await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: count });
+        await dispatchMouseClick(tabId, x, y, action, args.modifiers);
         const waitInfo = await postActionWait(tabId, args);
         return { content: [{ type: 'text', text: `Clicked [${x},${y}]${waitInfo}` }] };
       }
@@ -1799,27 +1943,12 @@ async function _executeTool(name, args) {
         }
         el.scrollIntoView({ behavior: 'instant', block: 'center' });
         el.focus();
-        const tag = el.tagName.toLowerCase();
-        if (tag === 'select') {
-          const opts = Array.from(el.options);
-          const opt = opts.find(o => o.value === String(value) || o.text.trim() === String(value));
-          if (!opt) return { error: `No option matching "${value}". Available: ${opts.map(o => o.value).slice(0, 10).join(', ')}` };
-          el.value = opt.value;
-        } else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) {
-          el.checked = !!value;
-        } else if ('value' in el) {
-          el.value = String(value);
-          try { el.setSelectionRange?.(el.value.length, el.value.length); } catch {} // throws on date/time/number/range inputs
-        } else if (el.isContentEditable) {
-          el.textContent = String(value);
-        }
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return { success: true, tag, value: ('value' in el) ? el.value?.slice(0, 50) : String(value).slice(0, 50) };
+        return window.__clawlineSetFormValue(el, value);
       }, args: [args.ref, args.value] });
       const r = results?.[0]?.result;
       if (r?.error) return { content: [{ type: 'text', text: r.error }] };
-      return { content: [{ type: 'text', text: `Set ${args.ref} <${r?.tag}> = "${r?.value}"` }] };
+      if (r?.ok === false) return { content: [{ type: 'text', text: `Set ${args.ref} <${r?.tag}> failed readback: expected "${r?.expected}", got "${r?.actual}"` }] };
+      return { content: [{ type: 'text', text: `Set ${args.ref} <${r?.tag}> = "${String(r?.actual).slice(0, 50)}" [verified]` }] };
     }
 
     case 'batch_form_input': {
@@ -1838,26 +1967,8 @@ async function _executeTool(name, args) {
           }
           el.scrollIntoView({ behavior: 'instant', block: 'center' });
           el.focus();
-          const tag = el.tagName.toLowerCase();
-          if (tag === 'select') {
-            const opts = Array.from(el.options);
-            const opt = opts.find(o => o.value === String(value) || o.text.trim() === String(value));
-            if (!opt) {
-              outcomes.push({ ref, ok: false, error: `No option matching "${value}". Available: ${opts.map(o => o.value).slice(0, 10).join(', ')}` });
-              continue;
-            }
-            el.value = opt.value;
-          } else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) {
-            el.checked = !!value;
-          } else if ('value' in el) {
-            el.value = String(value);
-            try { el.setSelectionRange?.(el.value.length, el.value.length); } catch {} // throws on date/time/number/range inputs
-          } else if (el.isContentEditable) {
-            el.textContent = String(value);
-          }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-          outcomes.push({ ref, ok: true, tag, val: ('value' in el) ? el.value?.slice(0, 30) : String(value).slice(0, 30) });
+          const outcome = window.__clawlineSetFormValue(el, value);
+          outcomes.push({ ref, ok: !!outcome.ok, tag: outcome.tag, val: String(outcome.actual ?? '').slice(0, 30), error: outcome.error || (outcome.ok ? '' : `readback expected "${outcome.expected}", got "${outcome.actual}"`) });
         }
         return { outcomes };
       }, args: [fields] });
@@ -2135,7 +2246,26 @@ async function _executeTool(name, args) {
 
 async function fetchWithRetry(url, opts, maxRetries = 3) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const res = await fetch(url, opts);
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (err) {
+      if (err?.name === 'AbortError' || attempt === maxRetries) throw err;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+      setStatus(`Network error, retrying in ${Math.round(delay/1000)}s...`);
+      try {
+        swPort?.postMessage({
+          type: 'error_log',
+          error: {
+            message: `[api-retry] fetch failed on attempt ${attempt + 1}/${maxRetries + 1}: ${err?.message || String(err)}`,
+            from: 'sidepanel-api',
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch {}
+      await new Promise(r => setTimeout(r, delay));
+      continue;
+    }
     if (res.ok || res.status < 429) return res;
     if (res.status === 429 || res.status >= 500) {
       if (attempt === maxRetries) return res;
@@ -2259,6 +2389,7 @@ async function runAgentLoop() {
 
   setRunning(true);
   abortController = new AbortController();
+  lastRunError = null;
 
   try {
     for (let step = 1; step <= getMaxLoops(); step++) {
@@ -2312,6 +2443,7 @@ async function runAgentLoop() {
       if (!res.ok) {
         const errText = await res.text();
         _diag('non-ok-break', { step, status: res.status, errText: errText.slice(0, 400) });
+        lastRunError = `API Error ${res.status}: ${errText}`;
         reportApiError(`HTTP ${res.status} from ${API_URL}/v1/messages`, { status: res.status, body: errText.slice(0, 600), model: body.model, msgsLen: messagesForAPI.length });
         addMsg('system', `API Error ${res.status}: ${errText}`);
         break;
@@ -2417,7 +2549,7 @@ async function runAgentLoop() {
       if (stopReason === 'end_turn') break;
     }
   } catch (err) {
-    if (err.name !== 'AbortError') { try { _diag('outer-catch', { name: err?.name, message: err?.message, stack: (err?.stack || '').split('\n').slice(0, 4).join(' | ') }); } catch {} reportApiError(`fetch threw: ${err?.name || 'Error'}: ${err?.message}`, { stack: (err?.stack || '').split('\n').slice(0, 4).join(' | ') }); addMsg('system', `Error: ${err.message}`); }
+    if (err.name !== 'AbortError') { lastRunError = `Error: ${err.message}`; try { _diag('outer-catch', { name: err?.name, message: err?.message, stack: (err?.stack || '').split('\n').slice(0, 4).join(' | ') }); } catch {} reportApiError(`fetch threw: ${err?.name || 'Error'}: ${err?.message}`, { stack: (err?.stack || '').split('\n').slice(0, 4).join(' | ') }); addMsg('system', `Error: ${err.message}`); }
   } finally {
     // Fix orphaned tool_use blocks: if assistant message has tool_use
     // without matching tool_results, append stubs so the API won't reject next request.
@@ -2547,6 +2679,15 @@ async function handleHookMessage(msg) {
 
   // Build completed response with optional extra data
   const newMessages = conversation.slice(convLenBefore);
+
+  if (lastRunError) {
+    sendHookResponse(taskId, 'error', lastRunError);
+    hookLogAdd('err', `Task failed: ${lastRunError.slice(0, 60)}`);
+    hookStats.error++;
+    activeHookTaskId = null;
+    updateHookStatus(hookConnected, false);
+    return;
+  }
 
   // Extract last assistant text
   let resultText = 'Task completed';
