@@ -429,6 +429,470 @@ function formatTimeAgo(ts) {
 
 function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
+function recordingIdFromName(name) {
+  const base = String(name || 'recording').trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return base || ('rec-' + Date.now());
+}
+
+async function loadRecordings() {
+  try { return await idbGet('recordings') || {}; }
+  catch (e) { console.warn('Failed to load recordings:', e); return {}; }
+}
+
+async function saveRecordings(recordings) {
+  await idbSet('recordings', recordings || {});
+}
+
+function summarizeRecording(rec) {
+  return {
+    id: rec.id,
+    name: rec.name,
+    description: rec.description || '',
+    site: rec.site || '',
+    tags: rec.tags || [],
+    version: rec.version || 1,
+    status: rec.status || 'unknown',
+    stepCount: rec.steps?.length || 0,
+    createdAt: rec.createdAt,
+    updatedAt: rec.updatedAt,
+    lastRun: rec.lastRun || null,
+  };
+}
+
+async function listRecordings() {
+  const recordings = await loadRecordings();
+  return Object.values(recordings).map(summarizeRecording).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+async function getRecording(id) {
+  const recordings = await loadRecordings();
+  return recordings[id] || null;
+}
+
+async function updateRecording(id, patch) {
+  const recordings = await loadRecordings();
+  const existing = recordings[id];
+  if (!existing && !Array.isArray(patch.steps)) throw new Error('Recording not found');
+  const next = existing ? { ...existing } : {
+    id,
+    name: patch.name || id,
+    description: patch.description || '',
+    site: patch.site || '',
+    tags: [],
+    status: 'ready',
+    steps: [],
+    createdAt: new Date().toISOString(),
+  };
+  for (const key of ['name', 'description', 'site', 'status']) {
+    if (typeof patch[key] === 'string') next[key] = patch[key];
+  }
+  if (Array.isArray(patch.tags)) next.tags = patch.tags;
+  if (Array.isArray(patch.steps)) next.steps = patch.steps;
+  if (patch.lastRun && typeof patch.lastRun === 'object') next.lastRun = patch.lastRun;
+  return upsertRecording(next);
+}
+
+async function upsertRecording(recording) {
+  const recordings = await loadRecordings();
+  const existing = recordings[recording.id];
+  recordings[recording.id] = {
+    ...recording,
+    version: existing ? (existing.version || 1) + 1 : 1,
+    createdAt: existing?.createdAt || recording.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await saveRecordings(recordings);
+  return recordings[recording.id];
+}
+
+function beginRecordingDraft(meta, task) {
+  if (!meta) { activeRecordingDraft = null; return; }
+  const name = meta.name || task?.slice(0, 60) || 'Recorded flow';
+  activeRecordingDraft = {
+    id: meta.id || recordingIdFromName(name),
+    name,
+    description: meta.description || task || '',
+    site: meta.site || '',
+    tags: Array.isArray(meta.tags) ? meta.tags : [],
+    status: 'ready',
+    steps: [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function getRefTargetSnapshot(tabId, ref) {
+  if (!ref) return null;
+  await injectContentScript(tabId);
+  const results = await chrome.scripting.executeScript({ target: { tabId }, func: (refId) => {
+    const el = window.__clawlineResolveRef ? window.__clawlineResolveRef(refId) : (window.__clawlineElementMap?.[refId]?.deref() || null);
+    if (!el || !document.contains(el)) return null;
+    if (window.__clawlineRememberSelector) window.__clawlineRememberSelector(refId, el);
+    const tag = el.tagName.toLowerCase();
+    const rect = el.getBoundingClientRect();
+    const text = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    let label = '';
+    if (el.id) {
+      try { label = (document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent || '').replace(/\s+/g, ' ').trim(); } catch {}
+    }
+    const selector = window.__clawlineSelectorCache?.[refId] || null;
+    return {
+      ref: refId,
+      selector,
+      tag,
+      role: el.getAttribute('role') || '',
+      name: el.getAttribute('aria-label') || label || el.getAttribute('placeholder') || text || el.getAttribute('name') || '',
+      text,
+      placeholder: el.getAttribute('placeholder') || '',
+      inputName: el.getAttribute('name') || '',
+      type: el.getAttribute('type') || '',
+      href: el.getAttribute('href') || '',
+      rect: { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) },
+    };
+  }, args: [ref] });
+  return results?.[0]?.result || null;
+}
+
+async function getCoordinateTargetSnapshot(tabId, coordinate) {
+  if (!Array.isArray(coordinate) || coordinate.length < 2) return null;
+  const [x, y] = scaleCoordinate(coordinate[0], coordinate[1]);
+  await injectContentScript(tabId);
+  const results = await chrome.scripting.executeScript({ target: { tabId }, func: (cx, cy) => {
+    const hit = document.elementFromPoint(cx, cy);
+    if (!hit) return null;
+    const clickable = hit.closest('a,button,input,select,textarea,[role="button"],[role="link"],[tabindex],[contenteditable]') || hit;
+    if (!clickable || !document.contains(clickable)) return null;
+    window.__clawlineElementMap = window.__clawlineElementMap || {};
+    window.__clawlineRefCounter = window.__clawlineRefCounter || 0;
+    let refId = null;
+    for (const key of Object.keys(window.__clawlineElementMap)) {
+      if (window.__clawlineElementMap[key]?.deref?.() === clickable) { refId = key; break; }
+    }
+    if (!refId) {
+      refId = 'ref_' + (++window.__clawlineRefCounter);
+      window.__clawlineElementMap[refId] = new WeakRef(clickable);
+    }
+    if (window.__clawlineRememberSelector) window.__clawlineRememberSelector(refId, clickable);
+    const tag = clickable.tagName.toLowerCase();
+    const rect = clickable.getBoundingClientRect();
+    const text = (clickable.getAttribute('aria-label') || clickable.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    let label = '';
+    if (clickable.id) {
+      try { label = (document.querySelector(`label[for="${CSS.escape(clickable.id)}"]`)?.textContent || '').replace(/\s+/g, ' ').trim(); } catch {}
+    }
+    return {
+      ref: refId,
+      selector: window.__clawlineSelectorCache?.[refId] || null,
+      tag,
+      role: clickable.getAttribute('role') || '',
+      name: clickable.getAttribute('aria-label') || label || clickable.getAttribute('placeholder') || text || clickable.getAttribute('name') || clickable.getAttribute('title') || '',
+      text,
+      placeholder: clickable.getAttribute('placeholder') || '',
+      inputName: clickable.getAttribute('name') || '',
+      type: clickable.getAttribute('type') || '',
+      href: clickable.getAttribute('href') || '',
+      rect: { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) },
+      hit: { x: cx, y: cy },
+    };
+  }, args: [x, y] });
+  return results?.[0]?.result || null;
+}
+
+async function buildPreRecordingSteps(tabId, toolName, input) {
+  const steps = [];
+  if (toolName === 'computer' && ['left_click', 'double_click', 'triple_click', 'right_click'].includes(input.action) && input.ref) {
+    const target = await getRefTargetSnapshot(tabId, input.ref);
+    if (target) steps.push({ type: 'click', action: input.action, target, wait_for: input.wait_for || 'none', wait_for_selector: input.wait_for_selector || '', wait_timeout: input.wait_timeout || 8 });
+    return steps;
+  }
+  if (toolName === 'computer' && ['left_click', 'double_click', 'triple_click', 'right_click'].includes(input.action) && Array.isArray(input.coordinate)) {
+    const target = await getCoordinateTargetSnapshot(tabId, input.coordinate);
+    steps.push({ type: 'coordinate_click', action: input.action, coordinate: input.coordinate, target, wait_for: input.wait_for || 'none', wait_for_selector: input.wait_for_selector || '', wait_timeout: input.wait_timeout || 8 });
+    return steps;
+  }
+  if (toolName === 'form_input' && input.ref) {
+    const target = await getRefTargetSnapshot(tabId, input.ref);
+    if (target) steps.push({ type: 'set', target, value: input.value });
+    return steps;
+  }
+  if (toolName === 'batch_form_input' && Array.isArray(input.fields)) {
+    const fields = [];
+    for (const field of input.fields) {
+      const target = await getRefTargetSnapshot(tabId, field.ref);
+      if (target) fields.push({ target, value: field.value });
+    }
+    if (fields.length) steps.push({ type: 'batch_set', fields });
+    if (input.click_after) {
+      const target = await getRefTargetSnapshot(tabId, input.click_after);
+      if (target) steps.push({ type: 'click', action: 'left_click', target, wait_for: 'none' });
+    }
+  }
+  return steps;
+}
+
+function buildPostRecordingSteps(toolName, input, result) {
+  const steps = [];
+  const textResult = (result?.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  if (toolName === 'computer' && input.action === 'key' && input.text) {
+    steps.push({ type: 'key', text: input.text, repeat: input.repeat || 1, wait_for: input.wait_for || 'none', wait_for_selector: input.wait_for_selector || '', wait_timeout: input.wait_timeout || 8 });
+    return steps;
+  }
+  if (toolName === 'computer' && input.action === 'type' && typeof input.text === 'string') {
+    steps.push({ type: 'type', text: input.text, wait_for: input.wait_for || 'none', wait_for_selector: input.wait_for_selector || '', wait_timeout: input.wait_timeout || 8 });
+    return steps;
+  }
+  if (toolName === 'computer' && input.action === 'wait') {
+    steps.push({ type: 'wait', duration: Math.min(input.duration || 2, 10) });
+    return steps;
+  }
+  if (toolName === 'computer' && input.action === 'scroll') {
+    steps.push({ type: 'scroll', coordinate: input.coordinate || null, scroll_direction: input.scroll_direction || 'down', scroll_amount: input.scroll_amount || 3 });
+    return steps;
+  }
+  if (toolName === 'navigate') {
+    steps.push({ type: 'navigate', url: input.url, wait_for: input.wait_for || 'load', wait_for_selector: input.wait_for_selector || '', wait_timeout: input.wait_timeout || 10 });
+    return steps;
+  }
+  if (toolName === 'get_page_text' && textResult && textResult.length <= 1000) {
+    const lines = textResult.split('\n').map(line => line.trim()).filter(Boolean);
+    const assertion = lines.findLast(line => /[:=]/.test(line)) || lines.at(-1) || textResult.trim();
+    if (assertion) steps.push({ type: 'assertText', contains: assertion.slice(0, 500) });
+  }
+  return steps;
+}
+
+async function captureRecordingStep(tabId, toolName, input, result) {
+  if (!activeRecordingDraft) return;
+  const steps = buildPostRecordingSteps(toolName, input, result);
+  if (steps.length) {
+    activeRecordingDraft.steps.push(...steps);
+    if (toolName === 'navigate' && !activeRecordingDraft.site && /^https?:\/\//i.test(input.url || '')) {
+      try { activeRecordingDraft.site = new URL(input.url).origin; } catch {}
+    }
+  }
+}
+
+function cloneReplaySteps(steps) {
+  return JSON.parse(JSON.stringify(steps || []));
+}
+
+function snapshotRecordingId() {
+  return 'snapshots-' + (activeConvId || 'current');
+}
+
+function snapshotRecordingName() {
+  const title = allConversations[activeConvId]?.title || 'Current conversation';
+  return `Snapshots - ${title}`.slice(0, 80);
+}
+
+function originFromUrl(url) {
+  try { return /^https?:\/\//i.test(url || '') ? new URL(url).origin : ''; } catch { return ''; }
+}
+
+async function appendReplaySnapshot(snapshot) {
+  if (!snapshot?.steps?.length) throw new Error('No replayable steps in this interaction');
+  const id = snapshotRecordingId();
+  const recordings = await loadRecordings();
+  const existing = recordings[id];
+  const steps = existing?.steps ? cloneReplaySteps(existing.steps) : [];
+  const snapshotSteps = cloneReplaySteps(snapshot.steps);
+  if (!existing?.steps?.length && snapshot.pageUrl && !snapshotSteps.some(step => step.type === 'navigate')) {
+    steps.push({ type: 'navigate', url: snapshot.pageUrl, wait_for: 'load', wait_timeout: 10 });
+  }
+  steps.push(...snapshotSteps);
+  const saved = await upsertRecording({
+    ...(existing || {}),
+    id,
+    name: existing?.name || snapshotRecordingName(),
+    description: 'Manually saved replay snapshots from completed interactions.',
+    site: existing?.site || originFromUrl(snapshot.pageUrl),
+    tags: existing?.tags || ['manual-snapshot', 'replay'],
+    status: 'ready',
+    steps,
+  });
+  return saved;
+}
+
+function attachRoundSnapshotButton(group, snapshot) {
+  if (!group || !snapshot?.steps?.length) return;
+  const header = group.querySelector('.tool-group-header');
+  if (!header || header.querySelector('.tool-group-save')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tool-group-save';
+  btn.textContent = '保存本轮';
+  btn.title = 'Save this completed round for replay';
+  btn.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    btn.disabled = true;
+    const previousText = btn.textContent;
+    btn.textContent = '保存中';
+    try {
+      const saved = await appendReplaySnapshot(snapshot);
+      btn.textContent = '已保存';
+      group.classList.add('snapshot-saved');
+      setStatus(`Snapshot saved (${saved.steps.length} replay steps)`);
+      if (recordingsPanel?.style.display !== 'none') renderRecordingsPanel();
+      setTimeout(() => setStatus(''), 2500);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = previousText;
+      setStatus(`Save snapshot failed: ${err.message}`);
+      setTimeout(() => setStatus(''), 3500);
+    }
+  });
+  header.appendChild(btn);
+}
+
+async function resolveRecordingTarget(tabId, target) {
+  await injectContentScript(tabId);
+  const results = await chrome.scripting.executeScript({ target: { tabId }, func: (targetInfo) => {
+    const map = window.__clawlineElementMap || (window.__clawlineElementMap = {});
+    window.__clawlineRefCounter = window.__clawlineRefCounter || 0;
+    const remember = (el) => {
+      if (!el) return null;
+      let refId = null;
+      for (const key of Object.keys(map)) if (map[key]?.deref?.() === el) { refId = key; break; }
+      if (!refId) { refId = 'ref_' + (++window.__clawlineRefCounter); map[refId] = new WeakRef(el); }
+      if (window.__clawlineRememberSelector) window.__clawlineRememberSelector(refId, el);
+      return refId;
+    };
+    const visible = (el) => {
+      if (!el) return false;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    };
+    if (targetInfo.selector) {
+      try {
+        const el = document.querySelector(targetInfo.selector);
+        if (visible(el)) return remember(el);
+      } catch {}
+    }
+    const candidates = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role="button"],[role="link"],[tabindex],[contenteditable]')).filter(visible);
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const wanted = norm(targetInfo.name || targetInfo.text || targetInfo.placeholder || targetInfo.inputName);
+    const wantedTag = norm(targetInfo.tag);
+    const scored = candidates.map(el => {
+      const label = el.id ? (document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent || '') : '';
+      const hay = norm([el.getAttribute('aria-label'), label, el.getAttribute('placeholder'), el.getAttribute('name'), el.textContent, el.getAttribute('href')].join(' '));
+      let score = 0;
+      if (wanted && hay === wanted) score += 10;
+      if (wanted && hay.includes(wanted)) score += 6;
+      if (wantedTag && norm(el.tagName) === wantedTag) score += 2;
+      if (targetInfo.type && el.getAttribute('type') === targetInfo.type) score += 1;
+      return { el, score };
+    }).sort((a, b) => b.score - a.score);
+    return scored[0]?.score > 0 ? remember(scored[0].el) : null;
+  }, args: [target] });
+  return results?.[0]?.result || null;
+}
+
+function toolText(result) {
+  return (result?.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+}
+
+function assertReplayToolOk(text) {
+  if (!text) return;
+  if (/\b(no longer exists|not found|not clickable|not interactable|disabled|failed readback|FAIL:)\b/i.test(text)) {
+    throw new Error(text.split('\n')[0].slice(0, 200));
+  }
+}
+
+async function replayDomClick(tabId, ref, step) {
+  const result = await executeTool('computer', { action: step.action || 'left_click', ref, wait_for: step.wait_for === 'none' ? undefined : step.wait_for, wait_for_selector: step.wait_for_selector || undefined, wait_timeout: step.wait_timeout || undefined });
+  const text = toolText(result);
+  assertReplayToolOk(text);
+  return text;
+}
+
+async function replayRecording(recording, opts = {}) {
+  const tabId = opts.tabId || await getTargetTab();
+  const previousLockedTabId = lockedTabId;
+  lockedTabId = tabId;
+  const trace = [];
+  const startedAt = Date.now();
+  try {
+    for (let i = 0; i < (recording.steps || []).length; i++) {
+      const step = recording.steps[i];
+      const entry = { step: i + 1, type: step.type, status: 'running' };
+      trace.push(entry);
+      try {
+        if (step.type === 'navigate') {
+          const result = await executeTool('navigate', { url: step.url, wait_for: step.wait_for || 'load', wait_for_selector: step.wait_for_selector || undefined, wait_timeout: step.wait_timeout || 10 });
+          entry.output = toolText(result);
+          assertReplayToolOk(entry.output);
+        } else if (step.type === 'click') {
+          const ref = await resolveRecordingTarget(tabId, step.target);
+          if (!ref) throw new Error(`target_not_found: ${step.target?.name || step.target?.selector || 'click target'}`);
+          entry.output = await replayDomClick(tabId, ref, step);
+        } else if (step.type === 'coordinate_click') {
+          if (step.target) {
+            const ref = await resolveRecordingTarget(tabId, step.target);
+            if (ref) entry.output = await replayDomClick(tabId, ref, step);
+          }
+          if (!entry.output) {
+            const result = await executeTool('computer', { action: step.action || 'left_click', coordinate: step.coordinate, wait_for: step.wait_for === 'none' ? undefined : step.wait_for, wait_for_selector: step.wait_for_selector || undefined, wait_timeout: step.wait_timeout || undefined });
+            entry.output = toolText(result);
+            assertReplayToolOk(entry.output);
+          }
+        } else if (step.type === 'key') {
+          const result = await executeTool('computer', { action: 'key', text: step.text, repeat: step.repeat || 1, wait_for: step.wait_for === 'none' ? undefined : step.wait_for, wait_for_selector: step.wait_for_selector || undefined, wait_timeout: step.wait_timeout || undefined });
+          entry.output = toolText(result);
+          assertReplayToolOk(entry.output);
+        } else if (step.type === 'type') {
+          const result = await executeTool('computer', { action: 'type', text: step.text, wait_for: step.wait_for === 'none' ? undefined : step.wait_for, wait_for_selector: step.wait_for_selector || undefined, wait_timeout: step.wait_timeout || undefined });
+          entry.output = toolText(result);
+          assertReplayToolOk(entry.output);
+        } else if (step.type === 'wait') {
+          const result = await executeTool('computer', { action: 'wait', duration: step.duration || 2 });
+          entry.output = toolText(result);
+          assertReplayToolOk(entry.output);
+        } else if (step.type === 'scroll') {
+          const result = await executeTool('computer', { action: 'scroll', coordinate: step.coordinate || undefined, scroll_direction: step.scroll_direction || 'down', scroll_amount: step.scroll_amount || 3 });
+          entry.output = toolText(result);
+          assertReplayToolOk(entry.output);
+        } else if (step.type === 'set') {
+          const ref = await resolveRecordingTarget(tabId, step.target);
+          if (!ref) throw new Error(`target_not_found: ${step.target?.name || step.target?.selector || 'set target'}`);
+          const value = step.valueFrom && opts.inputs ? opts.inputs[step.valueFrom] : step.value;
+          const result = await executeTool('form_input', { ref, value });
+          entry.output = toolText(result);
+          assertReplayToolOk(entry.output);
+        } else if (step.type === 'batch_set') {
+          const fields = [];
+          for (const field of step.fields || []) {
+            const ref = await resolveRecordingTarget(tabId, field.target);
+            if (!ref) throw new Error(`target_not_found: ${field.target?.name || field.target?.selector || 'batch field'}`);
+            const value = field.valueFrom && opts.inputs ? opts.inputs[field.valueFrom] : field.value;
+            fields.push({ ref, value });
+          }
+          const result = await executeTool('batch_form_input', { fields });
+          entry.output = toolText(result);
+          assertReplayToolOk(entry.output);
+        } else if (step.type === 'assertText') {
+          const result = await executeTool('get_page_text', {});
+          const text = toolText(result);
+          entry.output = text.slice(0, 1000);
+          if (!text.includes(step.contains)) throw new Error('assert_text_failed: expected text not found');
+        } else {
+          throw new Error(`unsupported_step: ${step.type}`);
+        }
+        entry.status = 'passed';
+      } catch (error) {
+        entry.status = 'failed';
+        entry.error = error.message || String(error);
+        return { status: 'failed', tabId, durationMs: Date.now() - startedAt, failedStep: entry.step, reason: entry.error, trace };
+      }
+    }
+    return { status: 'passed', tabId, durationMs: Date.now() - startedAt, trace };
+  } finally {
+    lockedTabId = previousLockedTabId;
+  }
+}
+
 // ── HTML Sanitizer (allowlist, DOM-based) ──
 // Prevents XSS from AI output, tool results, or restored conversation HTML.
 const _SAN_ALLOWED_TAGS = new Set([
@@ -505,6 +969,7 @@ let pendingImages = [];
 let thinkingEnabled = false;
 let fastMode = false;
 let lastRunError = null;
+let activeRecordingDraft = null;
 
 // ── DOM ──
 
@@ -629,6 +1094,9 @@ if (savedCustomInstructions) SKILL_MODES.custom.instructions = savedCustomInstru
 const settingsBtn = document.getElementById('settings-btn');
 const settingsPanel = document.getElementById('settings-panel');
 const bridgePanel = document.getElementById('bridge-panel');
+const recordingsBtn = document.getElementById('recordings-btn');
+const recordingsPanel = document.getElementById('recordings-panel');
+const recordingsListEl = document.getElementById('recordings-list');
 const cfgApiUrl = document.getElementById('cfg-api-url');
 const cfgApiKey = document.getElementById('cfg-api-key');
 
@@ -638,10 +1106,57 @@ document.getElementById('hook-status').addEventListener('click', () => {
   bridgePanel.style.display = visible ? 'none' : 'block';
   if (!visible) {
     settingsPanel.style.display = 'none'; // close settings if open
+    recordingsPanel.style.display = 'none';
     renderBridgePanel();
     checkApiHealth();
   }
 });
+
+async function renderRecordingsPanel() {
+  if (!recordingsListEl) return;
+  recordingsListEl.innerHTML = '';
+  const recordings = await listRecordings();
+  for (const rec of recordings) {
+    const item = document.createElement('div');
+    item.className = 'recording-item';
+    item.innerHTML = `<div class="recording-name" title="${escapeHtml(rec.id)}">${escapeHtml(rec.name || rec.id)}</div><button class="recording-run" data-id="${escapeHtml(rec.id)}">Replay</button><div class="recording-meta">${rec.stepCount} steps${rec.description ? ' · ' + escapeHtml(rec.description) : ''}</div>`;
+    item.querySelector('.recording-run').addEventListener('click', async (e) => {
+      const id = e.currentTarget.dataset.id;
+      const recording = await getRecording(id);
+      if (!recording) { setStatus('Recording not found'); return; }
+      setRunning(true);
+      setStatus(`Replaying ${recording.name || id}...`);
+      try {
+        const result = await replayRecording(recording, { tabId: lockedTabId });
+        const recordingsMap = await loadRecordings();
+        recordingsMap[id] = { ...recording, lastRun: { ...result, ranAt: new Date().toISOString() } };
+        await saveRecordings(recordingsMap);
+        setStatus(result.status === 'passed' ? 'Replay passed' : `Replay failed at step ${result.failedStep}`);
+        setTimeout(() => setStatus(''), 2500);
+        renderRecordingsPanel();
+      } catch (err) {
+        setStatus(`Replay error: ${err.message}`);
+        setTimeout(() => setStatus(''), 3500);
+      } finally {
+        await releaseDebugger();
+        setRunning(false);
+      }
+    });
+    recordingsListEl.appendChild(item);
+  }
+}
+
+recordingsBtn.addEventListener('click', async () => {
+  const visible = recordingsPanel.style.display !== 'none';
+  recordingsPanel.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    bridgePanel.style.display = 'none';
+    settingsPanel.style.display = 'none';
+    await renderRecordingsPanel();
+  }
+});
+
+document.getElementById('recordings-refresh').addEventListener('click', renderRecordingsPanel);
 
 // API health check
 async function checkApiHealth() {
@@ -666,6 +1181,7 @@ settingsBtn.addEventListener('click', () => {
   settingsPanel.style.display = visible ? 'none' : 'block';
   if (!visible) {
     bridgePanel.style.display = 'none'; // close bridge panel if open
+    recordingsPanel.style.display = 'none';
     cfgApiUrl.value = API_URL;
     cfgApiKey.value = API_KEY;
   }
@@ -2528,11 +3044,31 @@ async function runAgentLoop() {
 
       // Execute tools
       const results = [];
+      const roundSnapshotSteps = [];
+      let roundSnapshotPageUrl = '';
+      let roundSnapshotTabId = null;
+      let roundSnapshotGroup = null;
       for (const tool of toolUses) {
         setStatus(`${tool.name}...`);
-        addToolCall(tool.name, tool.input);
+        const toolRow = addToolCall(tool.name, tool.input);
+        if (!roundSnapshotGroup) roundSnapshotGroup = toolRow.closest('.tool-group');
+        const toolTabId = ['tabs_create', 'tabs_context'].includes(tool.name) ? null : await getTargetTab();
+        let tabBefore = null;
+        if (toolTabId) {
+          try { tabBefore = await chrome.tabs.get(toolTabId); } catch {}
+        }
+        if (!roundSnapshotPageUrl && tabBefore?.url) roundSnapshotPageUrl = tabBefore.url;
+        if (!roundSnapshotTabId && toolTabId) roundSnapshotTabId = toolTabId;
+        let preRecordingSteps = [];
+        if (toolTabId) {
+          try { preRecordingSteps = await buildPreRecordingSteps(toolTabId, tool.name, tool.input || {}); }
+          catch (e) { console.warn('[clawline] snapshot pre-capture failed:', e); }
+        }
         try {
           const result = await executeTool(tool.name, tool.input);
+          const snapshotSteps = preRecordingSteps.length ? preRecordingSteps : buildPostRecordingSteps(tool.name, tool.input || {}, result);
+          if (activeRecordingDraft && snapshotSteps.length) activeRecordingDraft.steps.push(...cloneReplaySteps(snapshotSteps));
+          if (snapshotSteps.length) roundSnapshotSteps.push(...cloneReplaySteps(snapshotSteps));
           if (result?.content) {
             for (const b of result.content) {
               if (b.type === 'image' && b.source?.data) addScreenshot(b.source.data, b.source.media_type);
@@ -2545,6 +3081,7 @@ async function runAgentLoop() {
           results.push({ type: 'tool_result', tool_use_id: tool.id, is_error: true, content: [{ type: 'text', text: err.message }] });
         }
       }
+      attachRoundSnapshotButton(roundSnapshotGroup || activeToolGroup, { label: 'round', steps: roundSnapshotSteps, pageUrl: roundSnapshotPageUrl, tabId: roundSnapshotTabId });
       conversation.push({ role: 'user', content: results });
       if (stopReason === 'end_turn') break;
     }
@@ -2600,6 +3137,66 @@ async function handleHookMessage(msg) {
   if (msg.type === 'hook_stop') {
     if (abortController) abortController.abort();
     sendHookResponse(msg.taskId, 'stopped', 'Task stopped by hook');
+    return;
+  }
+
+  if (msg.type === 'recordings_list_request') {
+    try {
+      swPort?.postMessage({ type: 'recordings_list', requestId: msg.requestId, recordings: await listRecordings() });
+    } catch (e) {
+      swPort?.postMessage({ type: 'recordings_list', requestId: msg.requestId, error: e.message });
+    }
+    return;
+  }
+
+  if (msg.type === 'recording_get_request') {
+    try {
+      const recording = await getRecording(msg.recordingId);
+      swPort?.postMessage({ type: 'recording_detail', requestId: msg.requestId, recording, error: recording ? null : 'Recording not found' });
+    } catch (e) {
+      swPort?.postMessage({ type: 'recording_detail', requestId: msg.requestId, error: e.message });
+    }
+    return;
+  }
+
+  if (msg.type === 'recording_update_request') {
+    try {
+      const recording = await updateRecording(msg.recordingId, msg.patch || {});
+      swPort?.postMessage({ type: 'recording_update', requestId: msg.requestId, recording: summarizeRecording(recording) });
+      if (recordingsPanel?.style.display !== 'none') renderRecordingsPanel();
+    } catch (e) {
+      swPort?.postMessage({ type: 'recording_update', requestId: msg.requestId, error: e.message });
+    }
+    return;
+  }
+
+  if (msg.type === 'replay_task') {
+    const taskId = msg.taskId || ('replay_' + Date.now());
+    if (isRunning) {
+      swPort?.postMessage({ type: 'replay_response', taskId, status: 'error', error: 'Agent is busy with another task' });
+      return;
+    }
+    if (msg.tabId) lockedTabId = msg.tabId;
+    activeHookTaskId = taskId;
+    updateHookStatus(hookConnected, true);
+    swPort?.postMessage({ type: 'replay_response', taskId, status: 'started' });
+    setRunning(true);
+    try {
+      const recording = await getRecording(msg.recordingId);
+      if (!recording) throw new Error(`Recording not found: ${msg.recordingId}`);
+      const result = await replayRecording(recording, { tabId: msg.tabId || lockedTabId, inputs: msg.inputs || {} });
+      const recordings = await loadRecordings();
+      recordings[recording.id] = { ...recording, lastRun: { ...result, ranAt: new Date().toISOString() } };
+      await saveRecordings(recordings);
+      swPort?.postMessage({ type: 'replay_response', taskId, recordingId: recording.id, ...result });
+    } catch (e) {
+      swPort?.postMessage({ type: 'replay_response', taskId, recordingId: msg.recordingId, status: 'error', error: e.message });
+    } finally {
+      await releaseDebugger();
+      setRunning(false);
+      activeHookTaskId = null;
+      updateHookStatus(hookConnected, false);
+    }
     return;
   }
 
@@ -2661,6 +3258,7 @@ async function handleHookMessage(msg) {
   const text = msg.task;
   addMsg('user', text);
   conversation.push({ role: 'user', content: text });
+  beginRecordingDraft(msg.record || msg.recording ? (msg.recording || {}) : null, text);
 
   // Record conversation length before this task (to extract only new messages)
   const convLenBefore = conversation.length;
@@ -2681,6 +3279,7 @@ async function handleHookMessage(msg) {
   const newMessages = conversation.slice(convLenBefore);
 
   if (lastRunError) {
+    activeRecordingDraft = null;
     sendHookResponse(taskId, 'error', lastRunError);
     hookLogAdd('err', `Task failed: ${lastRunError.slice(0, 60)}`);
     hookStats.error++;
@@ -2702,6 +3301,19 @@ async function handleHookMessage(msg) {
   }
 
   const extra = {};
+
+  if (activeRecordingDraft) {
+    try {
+      if (activeRecordingDraft.steps.length > 0) {
+        const saved = await upsertRecording(activeRecordingDraft);
+        extra.recording = summarizeRecording(saved);
+      }
+    } catch (e) {
+      extra.recordingError = e.message;
+    } finally {
+      activeRecordingDraft = null;
+    }
+  }
 
   // include_screenshot: return last screenshot as base64
   if (msg.include_screenshot) {

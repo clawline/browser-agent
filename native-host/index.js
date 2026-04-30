@@ -180,6 +180,50 @@ function handleChromeMessage(msg) {
     }
     return;
   }
+
+  if (msg.type === 'recordings_list' && msg.requestId) {
+    const pending = pendingRequests.get(msg.requestId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingRequests.delete(msg.requestId);
+      pending.resolve(msg);
+    }
+    return;
+  }
+
+  if (msg.type === 'recording_detail' && msg.requestId) {
+    const pending = pendingRequests.get(msg.requestId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingRequests.delete(msg.requestId);
+      pending.resolve(msg);
+    }
+    return;
+  }
+
+  if (msg.type === 'recording_update' && msg.requestId) {
+    const pending = pendingRequests.get(msg.requestId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingRequests.delete(msg.requestId);
+      pending.resolve(msg);
+    }
+    return;
+  }
+
+  if (msg.type === 'replay_response' && msg.taskId) {
+    const pending = pendingRequests.get(msg.taskId);
+    if (pending) {
+      if (msg.status === 'started') {
+        if (!pending.startedData) pending.startedData = msg;
+        return;
+      }
+      clearTimeout(pending.timer);
+      pendingRequests.delete(msg.taskId);
+      pending.resolve(msg);
+    }
+    return;
+  }
 }
 
 // ── HTTP Server ──
@@ -245,7 +289,7 @@ function sendJSON(res, statusCode, data) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   });
   res.end(body);
@@ -256,7 +300,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     });
     res.end();
@@ -293,6 +337,8 @@ const server = createServer(async (req, res) => {
         apiKey: body.apiKey || null,
         include_tools: body.include_tools === true,
         include_screenshot: body.include_screenshot === true,
+        record: body.record === true,
+        recording: body.recording || null,
       };
 
       // Create pending request
@@ -383,6 +429,119 @@ const server = createServer(async (req, res) => {
       const result = await promise;
       annotateBusy(result.sessions);
       sendJSON(res, 200, result);
+      return;
+    }
+
+    // GET /recordings — list reusable recorded browser flows
+    if (req.method === 'GET' && path === '/recordings') {
+      if (!chromeConnected) {
+        sendJSON(res, 503, { error: 'Chrome extension not connected' });
+        return;
+      }
+
+      const requestId = '__list_recordings_' + Date.now() + '_' + (++taskCounter);
+      const promise = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingRequests.delete(requestId);
+          resolve({ type: 'recordings_list', requestId, recordings: [], error: 'Timeout listing recordings' });
+        }, 5000);
+        pendingRequests.set(requestId, { resolve, timer });
+      });
+
+      sendToChrome({ action: 'list_recordings', requestId, windowId: url.searchParams.get('windowId') ? Number(url.searchParams.get('windowId')) : null, tabId: url.searchParams.get('tabId') ? Number(url.searchParams.get('tabId')) : null });
+      const result = await promise;
+      sendJSON(res, result.error ? 500 : 200, result);
+      return;
+    }
+
+    // GET /recordings/:id — fetch one reusable flow including replay steps
+    if (req.method === 'GET' && path.startsWith('/recordings/')) {
+      if (!chromeConnected) {
+        sendJSON(res, 503, { error: 'Chrome extension not connected' });
+        return;
+      }
+      const recordingId = decodeURIComponent(path.slice('/recordings/'.length));
+      if (!recordingId) {
+        sendJSON(res, 400, { error: 'Missing recording id' });
+        return;
+      }
+
+      const requestId = '__get_recording_' + Date.now() + '_' + (++taskCounter);
+      const promise = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingRequests.delete(requestId);
+          resolve({ type: 'recording_detail', requestId, recording: null, error: 'Timeout loading recording' });
+        }, 5000);
+        pendingRequests.set(requestId, { resolve, timer });
+      });
+
+      sendToChrome({ action: 'get_recording', requestId, recordingId, windowId: url.searchParams.get('windowId') ? Number(url.searchParams.get('windowId')) : null, tabId: url.searchParams.get('tabId') ? Number(url.searchParams.get('tabId')) : null });
+      const result = await promise;
+      sendJSON(res, result.error ? 404 : 200, result);
+      return;
+    }
+
+    // PATCH/POST /recordings/:id — update metadata or repaired replay steps
+    if ((req.method === 'PATCH' || req.method === 'POST') && path.startsWith('/recordings/')) {
+      if (!chromeConnected) {
+        sendJSON(res, 503, { error: 'Chrome extension not connected' });
+        return;
+      }
+      const recordingId = decodeURIComponent(path.slice('/recordings/'.length));
+      if (!recordingId) {
+        sendJSON(res, 400, { error: 'Missing recording id' });
+        return;
+      }
+      const body = await parseBody(req);
+      const requestId = '__update_recording_' + Date.now() + '_' + (++taskCounter);
+      const promise = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingRequests.delete(requestId);
+          resolve({ type: 'recording_update', requestId, recording: null, error: 'Timeout updating recording' });
+        }, 5000);
+        pendingRequests.set(requestId, { resolve, timer });
+      });
+
+      sendToChrome({ action: 'update_recording', requestId, recordingId, patch: body, windowId: url.searchParams.get('windowId') ? Number(url.searchParams.get('windowId')) : null, tabId: url.searchParams.get('tabId') ? Number(url.searchParams.get('tabId')) : null });
+      const result = await promise;
+      sendJSON(res, result.error ? 404 : 200, result);
+      return;
+    }
+
+    // POST /replay — run a saved flow deterministically without model calls
+    if (req.method === 'POST' && path === '/replay') {
+      if (!chromeConnected) {
+        sendJSON(res, 503, { error: 'Chrome extension not connected' });
+        return;
+      }
+      const body = await parseBody(req);
+      if (!body.recordingId) {
+        sendJSON(res, 400, { error: 'Missing required field: recordingId' });
+        return;
+      }
+
+      const taskId = generateTaskId();
+      const msg = {
+        action: 'replay_recording',
+        taskId,
+        recordingId: body.recordingId,
+        inputs: body.inputs || {},
+        tabId: body.tabId || null,
+        windowId: body.windowId || null,
+      };
+
+      const promise = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingRequests.delete(taskId);
+          resolve({ status: 'timeout', taskId, recordingId: body.recordingId, error: 'Replay timed out' });
+        }, REQUEST_TIMEOUT);
+        pendingRequests.set(taskId, { resolve, timer, windowId: body.windowId || null, tabId: body.tabId || null, startedAt: Date.now() });
+      });
+
+      sendToChrome(msg);
+      const result = await promise;
+      const httpStatus = result.status === 'error' ? 500 : 200;
+      sendJSON(res, httpStatus, result);
       return;
     }
 

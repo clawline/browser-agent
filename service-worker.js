@@ -301,6 +301,12 @@ chrome.runtime.onConnect.addListener((port) => {
       }
       return;
     }
+    if (msg.type === 'recordings_list' || msg.type === 'recording_detail' || msg.type === 'recording_update' || msg.type === 'replay_response') {
+      if (nativePort) {
+        try { nativePort.postMessage(msg); } catch (e) { console.warn('[clawline] forward recording response failed:', e.message); }
+      }
+      return;
+    }
     if (msg.type === 'error_log') {
       if (nativePort) {
         try { nativePort.postMessage(msg); } catch (e) { console.warn('[clawline] forward error_log failed:', e.message); }
@@ -401,6 +407,25 @@ async function handleNativeMessage(msg) {
     return;
   }
 
+  const sidepanelMessageType = msg.action === 'list_recordings'
+    ? 'recordings_list_request'
+    : msg.action === 'get_recording'
+      ? 'recording_get_request'
+      : msg.action === 'update_recording'
+        ? 'recording_update_request'
+      : msg.action === 'replay_recording'
+        ? 'replay_task'
+        : 'hook_task';
+  const errorResponseType = sidepanelMessageType === 'replay_task'
+    ? 'replay_response'
+    : sidepanelMessageType === 'recordings_list_request'
+      ? 'recordings_list'
+      : sidepanelMessageType === 'recording_get_request'
+        ? 'recording_detail'
+        : sidepanelMessageType === 'recording_update_request'
+          ? 'recording_update'
+          : 'hook_response';
+
   // Route task to target sidepanel
   let targetPort = null;
   let targetWindowId = null;
@@ -430,8 +455,9 @@ async function handleNativeMessage(msg) {
       if (nativePort) {
         try {
           nativePort.postMessage({
-            type: 'hook_response',
+            type: errorResponseType,
             taskId: msg.taskId,
+            requestId: msg.requestId,
             status: 'error',
             error: `Tab ${msg.tabId} not found: ${e.message}`,
           });
@@ -462,8 +488,9 @@ async function handleNativeMessage(msg) {
     if (nativePort) {
       try {
         nativePort.postMessage({
-          type: 'hook_response',
+          type: errorResponseType,
           taskId: msg.taskId,
+          requestId: msg.requestId,
           status: 'error',
           error: 'No sidepanel available. Open the extension side panel first.',
         });
@@ -473,7 +500,7 @@ async function handleNativeMessage(msg) {
   }
 
   try {
-    const routed = { type: 'hook_task', ...msg };
+    const routed = { type: sidepanelMessageType, ...msg };
     if (!routed.tabId && targetWindowId != null) {
       const sidepanelTabId = sidepanelHostTabs.get(targetWindowId);
       if (typeof sidepanelTabId === 'number') routed.tabId = sidepanelTabId;
@@ -483,8 +510,9 @@ async function handleNativeMessage(msg) {
     if (nativePort) {
       try {
         nativePort.postMessage({
-          type: 'hook_response',
+          type: errorResponseType,
           taskId: msg.taskId,
+          requestId: msg.requestId,
           status: 'error',
           error: 'Failed to send to sidepanel: ' + e.message,
         });
