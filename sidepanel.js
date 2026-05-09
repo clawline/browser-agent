@@ -2301,6 +2301,12 @@ async function _executeTool(name, args) {
                 }
                 const vk = keyCode(main);
                 await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
+                // Add char event for printable characters with modifiers
+                if (main.length === 1 && !mods.includes('ctrl') && !mods.includes('meta') && !mods.includes('cmd')) {
+                  await cdp('Input.dispatchKeyEvent', { type: 'char', text: main, key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
+                }
+                // Small delay before keyUp to ensure event processing
+                await new Promise(resolve => setTimeout(resolve, 10));
                 await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: main, windowsVirtualKeyCode: vk, modifiers: modBits });
               } finally {
                 // Always release modifiers, even if the main key dispatch threw —
@@ -2312,6 +2318,12 @@ async function _executeTool(name, args) {
             } else {
               const code = keyCode(k);
               await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: k, windowsVirtualKeyCode: code });
+              // Add char event for printable characters to improve compatibility
+              if (k.length === 1) {
+                await cdp('Input.dispatchKeyEvent', { type: 'char', text: k, key: k, windowsVirtualKeyCode: code });
+              }
+              // Small delay before keyUp to ensure event processing
+              await new Promise(resolve => setTimeout(resolve, 10));
               await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: k, windowsVirtualKeyCode: code });
             }
           }
@@ -2702,8 +2714,10 @@ async function _executeTool(name, args) {
       // Use CDP Runtime.evaluate to bypass page CSP (eval blocked on many sites)
       await ensureDebugger(tabId);
       try {
+        // Wrap code in IIFE to avoid variable redeclaration errors
+        const wrappedExpression = `(function() { ${args.text} })()`;
         const result = await cdp('Runtime.evaluate', {
-          expression: args.text,
+          expression: wrappedExpression,
           returnByValue: true,
           awaitPromise: true,
         });
@@ -2711,7 +2725,21 @@ async function _executeTool(name, args) {
           const errMsg = result.exceptionDetails.exception?.description || result.exceptionDetails.text || 'Unknown error';
           return { content: [{ type: 'text', text: 'Error: ' + errMsg }] };
         }
-        return { content: [{ type: 'text', text: String(result.result?.value ?? 'undefined') }] };
+        // Format result: use JSON.stringify for objects, String for primitives
+        const val = result.result?.value;
+        let formatted;
+        if (val === undefined || val === null) {
+          formatted = String(val);
+        } else if (typeof val === 'object') {
+          try {
+            formatted = JSON.stringify(val, null, 2);
+          } catch (e) {
+            formatted = String(val);
+          }
+        } else {
+          formatted = String(val);
+        }
+        return { content: [{ type: 'text', text: formatted }] };
       } catch (e) {
         return { content: [{ type: 'text', text: 'Error: ' + e.message }] };
       }
