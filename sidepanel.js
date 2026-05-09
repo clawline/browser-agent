@@ -2714,8 +2714,12 @@ async function _executeTool(name, args) {
       // Use CDP Runtime.evaluate to bypass page CSP (eval blocked on many sites)
       await ensureDebugger(tabId);
       try {
-        // Wrap code in IIFE to avoid variable redeclaration errors
-        const wrappedExpression = `(function() { ${args.text} })()`;
+        // Wrap user code in eval() to preserve completion-value semantics
+        // (last expression is returned, matching the tool contract) while
+        // isolating top-level let/const so they don't collide across calls.
+        // JSON.stringify safely encodes the source, avoiding issues with
+        // trailing line comments, quotes, or newlines in the user code.
+        const wrappedExpression = `eval(${JSON.stringify(args.text)})`;
         const result = await cdp('Runtime.evaluate', {
           expression: wrappedExpression,
           returnByValue: true,
